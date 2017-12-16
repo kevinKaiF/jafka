@@ -222,7 +222,9 @@ public class Processor extends AbstractServerThread {
     }
 
     public void accept(SocketChannel socketChannel) {
+        // 添加到异步队列
         newConnections.add(socketChannel);
+        // 唤醒Selector的阻塞
         getSelector().wakeup();
     }
 

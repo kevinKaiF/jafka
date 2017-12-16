@@ -62,6 +62,7 @@ public class FileMessageSet extends MessageSet {
                           boolean mutable, AtomicBoolean needRecover) throws IOException {
         super();
         this.channel = channel;
+        // 这个offset是当前日志文件的字节偏移量
         this.offset = offset;
         this.mutable = mutable;
         this.needRecover = needRecover;

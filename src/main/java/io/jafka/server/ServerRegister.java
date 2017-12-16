@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
+ * 将kafka自身的日志状态变化同步到zk
+ *
  * Handles the server's interaction with zookeeper. The server needs to register the following
  * paths:
  *

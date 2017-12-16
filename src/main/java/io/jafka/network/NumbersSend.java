@@ -40,9 +40,12 @@ public abstract class NumbersSend extends AbstractSend {
     public int writeTo(GatheringByteChannel channel) throws IOException {
         expectIncomplete();
         int written = 0;
+        // 因为之前已经rewind过
         if (header.hasRemaining()) {
             written += channel.write(header);
         }
+
+        // 因为之前已经rewind过
         if (!header.hasRemaining() && contentBuffer.hasRemaining()) {
             written += channel.write(contentBuffer);
         }

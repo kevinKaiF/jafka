@@ -35,6 +35,7 @@ public abstract class MessageSet implements Iterable<MessageAndOffset> {
 
     public static ByteBuffer createByteBuffer(CompressionCodec compressionCodec, Message... messages) {
         if (compressionCodec == CompressionCodec.NoCompressionCodec) {
+            // 对于每个message,会有LogOverhead，用于存储整个message的大小
             ByteBuffer buffer = ByteBuffer.allocate(messageSetSize(messages));
             for (Message message : messages) {
                 message.serializeTo(buffer);
@@ -42,13 +43,13 @@ public abstract class MessageSet implements Iterable<MessageAndOffset> {
             buffer.rewind();
             return buffer;
         }
-        //
+        // 如果没有message
         if (messages.length == 0) {
             ByteBuffer buffer = ByteBuffer.allocate(messageSetSize(messages));
             buffer.rewind();
             return buffer;
         }
-        //
+        // 如果有压缩编码，则进行压缩
         Message message = CompressionUtils.compress(messages, compressionCodec);
         ByteBuffer buffer = ByteBuffer.allocate(message.serializedSize());
         message.serializeTo(buffer);

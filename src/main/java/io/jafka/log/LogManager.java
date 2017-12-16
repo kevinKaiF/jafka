@@ -81,9 +81,11 @@ public class LogManager implements PartitionChooser, Closeable {
 
     final CountDownLatch startupLatch;
 
-    //
+    // key:topic,Value:Pool<Integer, Log>
+    // key:partition,Value:Log
     private final Pool<String, Pool<Integer, Log>> logs = new Pool<String, Pool<Integer, Log>>();
 
+    // 日志刷出调度调度器，只使用单线程
     private final Scheduler logFlusherScheduler = new Scheduler(1, "jafka-logflusher-", false);
 
     //
@@ -100,6 +102,7 @@ public class LogManager implements PartitionChooser, Closeable {
     /////////////////////////////////////////////////////////////////////////
     private ServerRegister serverRegister;
 
+    // key:topic,Value:partitionNum(分区数目)
     private final Map<String, Integer> topicPartitionsMap;
 
     private RollingStrategy rollingStategy;
@@ -116,16 +119,21 @@ public class LogManager implements PartitionChooser, Closeable {
         this.maxMessageSize = config.getMaxMessageSize();
         this.scheduler = scheduler;
         //        this.time = time;
+        // log.cleanup.interval.mins
         this.logCleanupIntervalMs = logCleanupIntervalMs;
+        // log.retention.hours 默认是24 * 7小时，一周
         this.logCleanupDefaultAgeMs = logCleanupDefaultAgeMs;
         this.needRecovery = needRecovery;
-        //
+        // log.dir 日志文件所在的位置
         this.logDir = Utils.getCanonicalFile(new File(config.getLogDir()));
+        // num.partitions 分区数目
         this.numPartitions = config.getNumPartitions();
+        // log.flush.interval 默认10000个 内存中MessageAndOffset的个数
         this.flushInterval = config.getFlushInterval();
         this.topicPartitionsMap = config.getTopicPartitionsMap();
         this.startupLatch = config.getEnableZookeeper() ? new CountDownLatch(1) : null;
         this.logFlushIntervalMap = config.getFlushIntervalMap();
+        // log.retention.size 保留文件的最大值
         this.logRetentionSize = config.getLogRetentionSize();
         this.logRetentionMSMap = getLogRetentionMSMap(config.getLogRetentionHoursMap());
         //
@@ -135,7 +143,13 @@ public class LogManager implements PartitionChooser, Closeable {
         this.rollingStategy = rollingStategy;
     }
 
+    /**
+     * 加载日志
+     *
+     * @throws IOException
+     */
     public void load() throws IOException {
+        // 默认的rolling策略是按文件固定大小rolling
         if (this.rollingStategy == null) {
             this.rollingStategy = new FixedSizeRollingStrategy(config.getLogFileSize());
         }
@@ -146,27 +160,38 @@ public class LogManager implements PartitionChooser, Closeable {
         if (!logDir.isDirectory() || !logDir.canRead()) {
             throw new IllegalArgumentException(logDir.getAbsolutePath() + " is not a readable log directory.");
         }
+
+        // 获取指定日志目录下的所有子文件夹
+        // 加载所有的日志文件信息到内存
         File[] subDirs = logDir.listFiles();
         if (subDirs != null) {
             for (File dir : subDirs) {
+                // 子文件的文件肯定是文件，而不是文件夹
                 if (!dir.isDirectory()) {
                     logger.warn("Skipping unexplainable file '" + dir.getAbsolutePath() + "'--should it be there?");
                 } else {
                     logger.info("Loading log from " + dir.getAbsolutePath());
                     final String topicNameAndPartition = dir.getName();
+                    // 文件名的格式topic-partition
                     if (-1 == topicNameAndPartition.indexOf('-')) {
                         throw new IllegalArgumentException("error topic directory: " + dir.getAbsolutePath());
                     }
+
+                    // key:topic,value:partition
                     final KV<String, Integer> topicPartion = Utils.getTopicPartition(topicNameAndPartition);
                     final String topic = topicPartion.k;
                     final int partition = topicPartion.v;
+                    // 一个topic-partition文件夹对应一个Log
                     Log log = new Log(dir, partition, this.rollingStategy, flushInterval, needRecovery, maxMessageSize);
 
                     logs.putIfNotExists(topic, new Pool<Integer, Log>());
+                    // key:partition,value:Log
                     Pool<Integer, Log> parts = logs.get(topic);
-
+                    // 把当前分区号，添加到map
                     parts.put(partition, log);
+                    // 获取这个topic分区的数目大小
                     int configPartition = getPartition(topic);
+                    // 如果分区数目大于配置分区大小，则更新
                     if (configPartition <= partition) {
                         topicPartitionsMap.put(topic, partition + 1);
                     }
@@ -175,6 +200,7 @@ public class LogManager implements PartitionChooser, Closeable {
         }
 
         /* Schedule the cleanup task to delete old logs */
+        // 启动清理日志调度器，异步清理日志
         if (this.scheduler != null) {
             logger.debug("starting log cleaner every " + logCleanupIntervalMs + " ms");
             this.scheduler.scheduleWithRate(new Runnable() {
@@ -189,10 +215,12 @@ public class LogManager implements PartitionChooser, Closeable {
 
             }, 60 * 1000, logCleanupIntervalMs);
         }
-        //
+
+        // enable.zookeeper 是否启用zk来同步kafka日志的状态信息
         if (config.getEnableZookeeper()) {
             this.serverRegister = new ServerRegister(config, this);
             serverRegister.startup();
+            // 将kafka的日志状态同步到zk，需要启动一个后台线程
             TopicRegisterTask task = new TopicRegisterTask();
             task.setName("jafka.topicregister");
             task.setDaemon(true);
@@ -249,6 +277,7 @@ public class LogManager implements PartitionChooser, Closeable {
      *
      * @throws IOException
      */
+    // 这个日志清理有两部分，清理过期的日志和清理超出配置日志大小的日志
     private void cleanupLogs() throws IOException {
         logger.trace("Beginning log cleanup...");
         int total = 0;
@@ -278,6 +307,7 @@ public class LogManager implements PartitionChooser, Closeable {
 
             long diff = log.size() - logRetentionSize;
 
+            // TODO ??????
             public boolean filter(LogSegment segment) {
                 diff -= segment.size();
                 return diff >= 0;
@@ -286,6 +316,7 @@ public class LogManager implements PartitionChooser, Closeable {
         return deleteSegments(log, toBeDeleted);
     }
 
+    // 清理超过保存时期log.retention.hours的LogSegment
     private int cleanupExpiredSegments(Log log) throws IOException {
         final long startMs = System.currentTimeMillis();
         String topic = Utils.getTopicPartition(log.dir.getName()).k;
@@ -294,6 +325,7 @@ public class LogManager implements PartitionChooser, Closeable {
             logCleanupThresholdMS = this.logCleanupDefaultAgeMs;
         }
         final long expiredThrshold = logCleanupThresholdMS.longValue();
+        // 先清理内存数据
         List<LogSegment> toBeDeleted = log.markDeletedWhile(new LogSegmentFilter() {
 
             public boolean filter(LogSegment segment) {
@@ -312,11 +344,13 @@ public class LogManager implements PartitionChooser, Closeable {
         for (LogSegment segment : segments) {
             boolean deleted = false;
             try {
+                // 先清理内存数据，关闭FileChannel
                 try {
                     segment.getMessageSet().close();
                 } catch (IOException e) {
                     logger.warn(e.getMessage(), e);
                 }
+                // 然后删除磁盘上的文件
                 if (!segment.getFile().delete()) {
                     deleted = true;
                 } else {
@@ -334,6 +368,7 @@ public class LogManager implements PartitionChooser, Closeable {
      * Register this broker in ZK for the first time.
      */
     public void startup() {
+        // 如果启用zk了，则将当前服务注册到zk
         if (config.getEnableZookeeper()) {
             serverRegister.registerBrokerInZk();
             for (String topic : getAllTopics()) {
@@ -341,7 +376,10 @@ public class LogManager implements PartitionChooser, Closeable {
             }
             startupLatch.countDown();
         }
+        // 启动刷出日志调度器，异步刷出内存数据到磁盘
         logger.debug("Starting log flusher every {} ms with the following overrides {}", config.getFlushSchedulerThreadRate(), logFlushIntervalMap);
+        // log.default.flush.scheduler.interval.ms 刷出日志调度器时间间隔 默认1s
+        // 注意这里并不是日志的刷出时间间隔，而是调度器
         logFlusherScheduler.scheduleWithRate(new Runnable() {
 
             public void run() {
@@ -365,6 +403,7 @@ public class LogManager implements PartitionChooser, Closeable {
                     long timeSinceLastFlush = System.currentTimeMillis() - log.getLastFlushedTime();
                     Integer logFlushInterval = logFlushIntervalMap.get(log.getTopicName());
                     if (logFlushInterval == null) {
+                        // log.default.flush.interval.ms 默认的日志刷出间隔
                         logFlushInterval = config.getDefaultFlushIntervalMs();
                     }
                     final String flushLogFormat = "[%s] flush interval %d, last flushed %d, need flush? %s";
@@ -373,6 +412,7 @@ public class LogManager implements PartitionChooser, Closeable {
                             log.getLastFlushedTime(), needFlush));
                 }
                 if (needFlush) {
+                    // 刷出只是将最后一个LogSegment刷出
                     log.flush();
                 }
             } catch (IOException ioe) {
@@ -479,14 +519,17 @@ public class LogManager implements PartitionChooser, Closeable {
         Log log = parts.get(partition);
         if (log == null) {
             log = createLog(topic, partition);
+            // 找到整个topic的Log,如果不存在说明Log还没有创建，也没有创建任何一个分区
             Log found = parts.putIfNotExists(partition, log);
             if (found != null) {
                 Closer.closeQuietly(log, logger);
                 log = found;
             } else {
                 logger.info(format("Created log for [%s-%d], now create other logs if necessary", topic, partition));
+                // 获取分区数目，创建所有的分区
                 final int configPartitions = getPartition(topic);
                 for (int i = 0; i < configPartitions; i++) {
+                    // 递归创建分区
                     getOrCreateLog(topic, i);
                 }
             }
@@ -555,6 +598,14 @@ public class LogManager implements PartitionChooser, Closeable {
         return value;
     }
 
+    /**
+     * 创建分区目录
+     *
+     * @param topic
+     * @param partition
+     * @return
+     * @throws IOException
+     */
     private Log createLog(String topic, int partition) throws IOException {
         synchronized (logCreationLock) {
             File d = new File(logDir, topic + "-" + partition);

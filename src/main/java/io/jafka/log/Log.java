@@ -77,6 +77,7 @@ public class Log implements ILog {
 
     private final AtomicLong lastflushedTime = new AtomicLong(System.currentTimeMillis());
 
+    // topic-partition的文件名
     public final String name;
 
     private final LogStats logStats = new LogStats(this);
@@ -93,15 +94,20 @@ public class Log implements ILog {
             boolean needRecovery,//
             int maxMessageSize) throws IOException {
         super();
+        // topic-partition文件名
         this.dir = dir;
+        // 分区号
         this.partition = partition;
+        // 日志的rolling策略，默认是FixedSizeRollingStrategy
         this.rollingStategy = rollingStategy;
+        // MessageAndOffset的累计个数，默认是10000
         this.flushInterval = flushInterval;
         this.needRecovery = needRecovery;
         this.maxMessageSize = maxMessageSize;
         this.name = dir.getName();
         this.logStats.setMbeanName("jafka:type=jafka.logs." + name);
         Utils.registerMBean(logStats);
+        // 加载所有的topic-partition下所有的文件
         segments = loadSegments();
     }
 
@@ -118,12 +124,15 @@ public class Log implements ILog {
         for (File f : ls) {
             n++;
             String filename = f.getName();
+            // 日志文件名是20位的数字组成，表示该文件的字节数目大小
             long start = Long.parseLong(filename.substring(0, filename.length() - FileSuffix.length()));
             final String logFormat = "LOADING_LOG_FILE[%2d], start(offset)=%d, size=%d, path=%s";
             logger.info(String.format(logFormat, n, start, f.length(), f.getAbsolutePath()));
             FileMessageSet messageSet = new FileMessageSet(f, false);
             accum.add(new LogSegment(f, messageSet, start));
         }
+
+        // 如果没有日志文件，说明还没有创建，需要创建新的日志
         if (accum.size() == 0) {
             // no existing segments, create a new mutable segment
             File newFile = new File(dir, Log.nameFromOffset(0));
@@ -132,13 +141,18 @@ public class Log implements ILog {
         } else {
             // there is at least one existing segment, validate and recover them/it
             // sort segments into ascending order for fast searching
+            // 这里的排序很关键，排序规则是按LogSegment的start来排序，即整个topic所有日志的offset
             Collections.sort(accum);
+            // 校验前后的LogSegment是否是连贯的
             validateSegments(accum);
         }
-        //
+        // 删除最后一个LogSegment
         LogSegment last = accum.remove(accum.size() - 1);
+        // 关闭文件流
         last.getMessageSet().close();
         logger.info("Loading the last segment " + last.getFile().getAbsolutePath() + " in mutable mode, recovery " + needRecovery);
+        // 重新生成最后一个LogSegment，并且是可读写的，然后重新添加到list
+        // 这么操作的原因是之前生成的LogSegment都是只读的
         LogSegment mutable = new LogSegment(last.getFile(), new FileMessageSet(last.getFile(), true, new AtomicBoolean(
                 needRecovery)), last.start());
         accum.add(mutable);
@@ -291,6 +305,7 @@ public class Log implements ILog {
     private long nextAppendOffset() throws IOException {
         flush();
         LogSegment lastView = segments.getLastView();
+        // 下个文件的名称就是上个文件的start+size,即整个topic所有日志的offset
         return lastView.start() + lastView.size();
     }
 
