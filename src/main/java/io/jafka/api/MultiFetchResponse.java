@@ -46,17 +46,26 @@ public class MultiFetchResponse implements Iterable<ByteBufferMessageSet> {
      * @param numSets response count
      * @param offsets message offset for each response
      */
+    // numSets表示对同一个broker, 抓取多个partition的个数
+    // offsets的都是有顺序的，不能错
     public MultiFetchResponse(ByteBuffer buffer, int numSets, List<Long> offsets) {
         super();
         this.messageSets = new ArrayList<ByteBufferMessageSet>();
         for (int i = 0; i < numSets; i++) {
+            // 4个字节   这个数据体的大小
             int size = buffer.getInt();
+            // 2个字节   错误编号
             short errorCode = buffer.getShort();
+            // 获取真正的数据体
             ByteBuffer copy = buffer.slice();
+            // 除去2个字节的 errorCode
             int payloadSize = size - 2;
+            // 重置limit,限定需要读取的数据
             copy.limit(payloadSize);
             //move position for next reading
+            // 重置buffer的位置
             buffer.position(buffer.position() + payloadSize);
+            // 转为ByteBufferMessageSet
             messageSets.add(new ByteBufferMessageSet(copy, offsets.get(i), ErrorMapping.valueOf(errorCode)));
         }
     }

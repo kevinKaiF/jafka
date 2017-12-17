@@ -128,6 +128,7 @@ public class AsyncProducer<T> implements Closeable {
         if (data != null) {
             try {
                 if (enqueueTimeoutMs == 0) {
+                    // offer 不会阻塞
                     added = queue.offer(data);
                 } else if (enqueueTimeoutMs < 0) {
                     queue.put(data);

@@ -482,7 +482,7 @@ public class Log implements ILog {
         }
 
         // 对于最后一个LogSegment,偏移量需要特殊处理是，start + highWaterMark，即最新的位置，时间也是当前时间
-        // TODO 为什么这么做?有什么用途
+        // 注意：这样做的目的是获取当前topic-partition的最新的offset
         if (lastSegmentNotEmpty) {
             offsetTimes.add(new KV<Long, Long>(lastLogSegent.start() + lastLogSegent.getMessageSet().highWaterMark(),
                     System.currentTimeMillis()));

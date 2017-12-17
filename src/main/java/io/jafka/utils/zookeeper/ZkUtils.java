@@ -121,14 +121,19 @@ public class ZkUtils {
      * @param zkClient the zookeeper client
      * @param topics   topic names
      * @return topic-&gt;(brokerid-0,brokerid-1...brokerid2-0,brokerid2-1...)
+     *
+     * key:topic,value:brokerid-0,brokerid-1...brokerid2-0,brokerid2-1...
      */
     public static Map<String, List<String>> getPartitionsForTopics(ZkClient zkClient, Collection<String> topics) {
         Map<String, List<String>> ret = new HashMap<String, List<String>>();
         for (String topic : topics) {
             List<String> partList = new ArrayList<String>();
+            // 获取/brokers/topics/topic-name下所有的broker
             List<String> brokers = getChildrenParentMayNotExist(zkClient, BrokerTopicsPath + "/" + topic);
             if (brokers != null) {
                 for (String broker : brokers) {
+                    // 获取brokers/topics/topic-name/broker-name的data
+                    // parts broker的个数
                     final String parts = readData(zkClient, BrokerTopicsPath + "/" + topic + "/" + broker);
                     int nParts = Integer.parseInt(parts);
                     for (int i = 0; i < nParts; i++) {
@@ -148,15 +153,23 @@ public class ZkUtils {
      * @param zkClient the zookeeper client
      * @param group    the group name
      * @return topic-&gt;(consumerIdStringA-0,consumerIdStringA-1...consumerIdStringB-0,consumerIdStringB-1)
+     *
+     * key:topic,value:consumerIdStringA-0,consumerIdStringA-1...consumerIdStringB-0,consumerIdStringB-1
      */
     public static Map<String, List<String>> getConsumersPerTopic(ZkClient zkClient, String group) {
         ZkGroupDirs dirs = new ZkGroupDirs(group);
+        // 获取当前group下所有的consumerId
         List<String> consumers = getChildrenParentMayNotExist(zkClient, dirs.consumerRegistryDir);
         //
         Map<String, List<String>> consumersPerTopicMap = new HashMap<String, List<String>>();
+        // 遍历consumerId
         for (String consumer : consumers) {
+            // 获取每个consumerId, /consumer/group-name/ids/consumerIdString的data
+            // data为topicCountMap, topicCountMap定义了每个consumer消费的线程个数
             TopicCount topicCount = getTopicCount(zkClient, group, consumer);
+            // key:topic,value:Set<string> 消费端线程数目 consumerIdString-0,consumerIdString-1..
             for (Map.Entry<String, Set<String>> e : topicCount.getConsumerThreadIdsPerTopic().entrySet()) {
+                // 对每一个topic做处理，将Set<String>转为list
                 final String topic = e.getKey();
                 for (String consumerThreadId : e.getValue()) {
                     List<String> list = consumersPerTopicMap.get(topic);
@@ -169,7 +182,7 @@ public class ZkUtils {
                 }
             }
         }
-        //
+        // 对每个topic的消费线程名排序,很重要
         for (Map.Entry<String, List<String>> e : consumersPerTopicMap.entrySet()) {
             Collections.sort(e.getValue());
         }

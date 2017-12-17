@@ -72,6 +72,9 @@ public class Fetcher {
         }
 
         //re-arrange by broker id
+        // 将List<PartitionTopicInfo>转为map
+        // key:brokerId,value:List<PartitionTopicInfo>
+        // 这样一个broker就只需要一个socket连接
         Map<Integer, List<PartitionTopicInfo>> m = new HashMap<Integer, List<PartitionTopicInfo>>();
         for (PartitionTopicInfo info : topicInfos) {
             if (cluster.getBroker(info.brokerId) == null) {
@@ -86,6 +89,7 @@ public class Fetcher {
         }
         //
         final List<FetcherRunnable> fetcherThreads = new ArrayList<FetcherRunnable>();
+        // 每个broker创建一个socket连接
         for (Map.Entry<Integer, List<PartitionTopicInfo>> e : m.entrySet()) {
             FetcherRunnable fetcherThread = new FetcherRunnable("FetchRunnable-" + e.getKey(), //
                     zkClient, //
@@ -95,7 +99,7 @@ public class Fetcher {
             fetcherThreads.add(fetcherThread);
             fetcherThread.start();
         }
-        //
+        // 记录与所有的broker的socket线程
         this.fetcherThreads = fetcherThreads;
     }
 

@@ -48,6 +48,7 @@ public class FileMessageSet extends MessageSet {
     private final FileChannel channel;
 
     // 这个offset是文件读取字节的偏移量
+    // 这个offset通常都是0，表示文件的开头
     private final long offset;
 
     private final boolean mutable;

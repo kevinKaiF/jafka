@@ -46,6 +46,7 @@ public class MultiMessageSetSend extends MultiSend<Send> {
         }
         //write head size
         // 2个字节，供short占用，allMessageSetSize是整个List<MessageSetSend> sets的大小
+        // 这里的2个字节仅仅是占位符，与response数据格式保持一致
         sizeBuffer.getBuffer().putInt(2 + allMessageSetSize);//4
         sizeBuffer.getBuffer().putShort((short) 0);//2
         sizeBuffer.getBuffer().rewind();

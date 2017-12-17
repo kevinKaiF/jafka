@@ -160,10 +160,15 @@ public class EmbeddedConsumer implements TopicEventHandler<String> {
 
         threadList.clear();
 
+        // 创建消费端连接器，类似工厂
         consumerConnector = Consumer.create(consumerConfig);
+        // key:topic,value:List<MessageStream> 每个消费线程对应一个
+        // 这里的MessageStream中的queue是共享与消费线程FetcherRunnable的
+        // 所以FetcherRunnable的fetchOnce的数据都会添加到queue队列中去
         Map<String, List<MessageStream<Message>>> streams = consumerConnector.createMessageStreams(topicCountMap, new MessageEncoders());
         for (Map.Entry<String, List<MessageStream<Message>>> e : streams.entrySet()) {
             int i = 0;
+            // 每个FetcherRunnable都有镜像的线程
             for (MessageStream<Message> stream : e.getValue()) {
                 threadList.add(new MirroringThread(stream, e.getKey(), i++, producer));
             }

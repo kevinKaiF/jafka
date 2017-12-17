@@ -27,6 +27,7 @@ public class Partition implements Comparable<Partition> {
 
     public final int brokerId;
 
+    // 这个partId就是topic的分区partitionId
     public final int partId;
 
     public Partition(int brokerId, int partId) {

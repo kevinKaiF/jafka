@@ -47,6 +47,7 @@ public class PartitionTopicInfo {
 
     private final AtomicLong fetchedOffset;
 
+    // 记录consumedOffset变更的次数
     private final AtomicLong consumedOffsetChanged = new AtomicLong(0);
 
     final Partition partition;
@@ -94,7 +95,9 @@ public class PartitionTopicInfo {
         long size = messages.getValidBytes();
         if (size > 0) {
             final long oldOffset = fetchedOffset.get();
+            // 将数据添加到队列
             chunkQueue.put(new FetchedDataChunk(messages, this, fetchOffset));
+            // 更新fetchedOffset
             long newOffset = fetchedOffset.addAndGet(size);
             if (logger.isDebugEnabled()) {
                 logger.debug(format("updated fetchset (origin+size=newOffset) => %d + %d = %d", oldOffset, size, newOffset));

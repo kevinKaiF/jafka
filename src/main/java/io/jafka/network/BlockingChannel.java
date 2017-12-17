@@ -97,6 +97,7 @@ public class BlockingChannel {
 
     public KV<Receive, ErrorMapping> receive() throws IOException{
         BoundedByteBufferReceive response = new BoundedByteBufferReceive();
+        // response.buffer().getShort() 是服务端响应的时候，先写入状态码的
         response.readCompletely(readChannel);
         return new KV<Receive, ErrorMapping>(response, ErrorMapping.valueOf(response.buffer().getShort()));
     }

@@ -127,9 +127,11 @@ public class ProducerSendThread<T> extends Thread {
                     } else {
                         events.add(item);
                     }
-                    //
+                    // 批量发送
                     full = events.size() >= batchSize;
                 }
+
+                // 达到batchSize，获取超时了，则发送
                 if (full || expired) {
                     if (logger.isDebugEnabled()) {
                         if (expired) {
@@ -164,6 +166,7 @@ public class ProducerSendThread<T> extends Thread {
         }
         if (events.size() > 0) {
             try {
+                // AsyncProducer异步，还是依赖SyncProducer实现的，不过用队列和线程包装了一层
                 this.eventHandler.handle(events, underlyingProducer, serializer);
             } catch (RuntimeException e) {
                 logger.error("Error in handling batch of " + events.size() + " events", e);

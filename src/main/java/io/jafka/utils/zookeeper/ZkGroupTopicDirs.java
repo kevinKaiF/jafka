@@ -30,9 +30,11 @@ public class ZkGroupTopicDirs extends ZkGroupDirs {
     public final String topic;
 
     /** '/consumers/&lt;group&gt;/offsets/&lt;topic&gt;' */
+    // /consumer/group-name/offsets/topic-name
     public final String consumerOffsetDir;
 
     /** '/consumers/&lt;group&gt;/owners/&lt;topic&gt;' */
+    // /consumer/group-name/owners/topic-name
     public final String consumerOwnerDir;
 
     public ZkGroupTopicDirs(String group, String topic) {

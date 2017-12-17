@@ -145,6 +145,8 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
 
     private ZkClient zkClient;
 
+    // key:topic,value:Pool<Partition, PartitionTopicInfo>
+    // key:broker-partId,value:partitionTopicInfo
     private Pool<String, Pool<Partition, PartitionTopicInfo>> topicRegistry;
 
     //
@@ -165,15 +167,19 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
 
     public ZookeeperConsumerConnector(ConsumerConfig config, boolean enableFetcher) {
         this.config = config;
+        // 是否抓取数据
         this.enableFetcher = enableFetcher;
         //
         this.topicRegistry = new Pool<String, Pool<Partition, PartitionTopicInfo>>();
         this.queues = new Pool<StringTuple, BlockingQueue<FetchedDataChunk>>();
-        //
+        // 连接到zk
         connectZk();
+        // 创建抓取器
         createFetcher();
+        // 是否是自动commit
         if (this.config.isAutoCommit()) {
             logger.info("starting auto committer every " + config.getAutoCommitIntervalMs() + " ms");
+            // autocommit.interval.ms 默认1000ms
             scheduler.scheduleWithRate(new AutoCommitTask(), config.getAutoCommitIntervalMs(),
                     config.getAutoCommitIntervalMs());
         }
@@ -208,7 +214,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         if (topicCountMap == null) {
             throw new IllegalArgumentException("topicCountMap is null");
         }
-        //
+        // zk消费目录
         ZkGroupDirs dirs = new ZkGroupDirs(config.getGroupId());
         Map<String, List<MessageStream<T>>> ret = new HashMap<String, List<MessageStream<T>>>();
         String consumerUuid = config.getConsumerId();
@@ -223,6 +229,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         final String consumerIdString = config.getGroupId() + "_" + consumerUuid;
         // 消费端有一个consumerIdString,去消费多个topic
         final TopicCount topicCount = new TopicCount(consumerIdString, topicCountMap);
+        // 一个topic有个多个消费线程，默认是1
         for (Map.Entry<String, Set<String>> e : topicCount.getConsumerThreadIdsPerTopic().entrySet()) {
             final String topic = e.getKey();
             final Set<String> threadIdSet = e.getValue();
@@ -230,9 +237,12 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
             for (String threadId : threadIdSet) {
                 // queuedchunks.max 默认10
                 // 每个topic的，每个消费线程有Queue<FetchedDataChunk>
+                // 这里的stream被共享了，分别是streamList,queues
+                // queuedchunks.max 最大的消费抓取块
                 LinkedBlockingQueue<FetchedDataChunk> stream = new LinkedBlockingQueue<FetchedDataChunk>(
                         config.getMaxQueuedChunks());
                 // key:topic + groupId_consumer_id,value:Queue<FetchedDataChunk>
+                // 以topic和客户端消费线程的id为key
                 queues.put(new StringTuple(topic, threadId), stream);
                 // consumer.timeout.ms 客户端消费超时毫秒数
                 streamList.add(new MessageStream<T>(topic, stream, config.getConsumerTimeoutMs(), decoder));
@@ -249,6 +259,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         this.rebalancerListeners.add(loadBalancerListener);
         // register consumer first
         // 注册消费客户端到zk
+        // /consumers/group-name/ids/consumerIdString
         loadBalancerListener.registerConsumer();
         //
         //register listener for session expired event
@@ -295,7 +306,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         }
     }
 
-
+    // 提交offset
     public void commitOffsets() {
         if (zkClient == null) {
             logger.error("zk client is null. Cannot commit offsets");
@@ -310,14 +321,17 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                     logger.trace("consume offset not changed");
                     continue;
                 }
+                // 获取当前FetcherRunnable线程消费的offset
                 final long newOffset = info.getConsumedOffset();
                 //path: /consumers/<group>/offsets/<topic>/<brokerid-partition>
+                // 更新到zk
                 final String path = topicDirs.consumerOffsetDir + "/" + info.partition.getName();
                 try {
                     ZkUtils.updatePersistentPath(zkClient, path, "" + newOffset);
                 } catch (Throwable t) {
                     logger.warn("exception during commitOffsets, path=" + path + ",offset=" + newOffset, t);
                 } finally {
+                    // 更新完后，重置变更次数为0
                     info.resetComsumedOffsetChanged(lastChanged);
                     if (logger.isDebugEnabled()) {
                         logger.debug("Committed [" + path + "] for topic " + info);
@@ -409,6 +423,8 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
             this.watcherExecutorThread.start();
         }
 
+        // 监听/consumers/group-name/ids 即消费端的变化
+        // 同一个group下,如果消费端增加了或者减少了，就需要进行rebalance
         public void handleChildChange(String parentPath, List<String> currentChilds) throws Exception {
             lock.lock();
             try {
@@ -466,9 +482,12 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
 
         /**
          * 重新均衡客户端的消费
+         *
+         * 同一个group下,如果消费端增加了或者减少了，就需要进行rebalance
          */
         private void syncedRebalance() {
             synchronized (rebalanceLock) {
+                // rebalance.retries.max 如果rebalance失败，会尝试几次
                 for (int i = 0; i < config.getMaxRebalanceRetries(); i++) {
                     if (isShuttingDown.get()) {//do nothing while shutting down
                         return;
@@ -476,8 +495,10 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                     logger.info(format("[%s] rebalancing starting. try #%d", consumerIdString, i));
                     final long start = System.currentTimeMillis();
                     boolean done = false;
+                    // 获取所有的broker
                     Cluster cluster = ZkUtils.getCluster(zkClient);
                     try {
+                        // 如果rebalance失败了，还需要继续rebalance几次
                         done = rebalance(cluster);
                     } catch (ZkNoNodeException znne){
                         logger.info("some consumers dispeared during rebalancing: {}",znne.getMessage());
@@ -495,7 +516,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                     }
                     logger.info(format("[%s] rebalanced %s. try #%d, cost %d ms",//
                             consumerIdString, done ? "OK" : "FAILED", i, System.currentTimeMillis() - start));
-                    //
+                    // 如果rebalance成功则返回
                     if (done) {
                         return;
                     } else {
@@ -503,9 +524,10 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                          * clear the cache */
                         logger.warn("Rebalancing attempt failed. Clearing the cache before the next rebalancing operation is triggered");
                     }
-                    //
+                    // 否则关闭Fetcher,内存中的数据
                     closeFetchersForQueues( messagesStreams, queues.values());
                     try {
+                        // rebalance.backoff.ms rebalance回退时间 默认10000ms
                         Thread.sleep(config.getRebalanceBackoffMs());
                     } catch (InterruptedException e) {
                         logger.warn(e.getMessage());
@@ -518,10 +540,13 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
 
         private boolean rebalance(Cluster cluster) {
             // map for current consumer: topic->[ groupid-consumer-0, groupid-consumer-1 ,..., groupid-consumer-N]
+            // 获取当前消费端的所有的topic的消费线程
             Map<String, Set<String>> myTopicThreadIdsMap = ZkUtils.getTopicCount(zkClient, group, consumerIdString).getConsumerThreadIdsPerTopic();
             // map for all consumers in this group: topic->[groupid-consumer1-0,...,groupid-consumerX-N]
+            // 获取/consumer/group-name/ids下集群中所有的topic的消费线程
             Map<String, List<String>> consumersPerTopicMap = ZkUtils.getConsumersPerTopic(zkClient, group);
             // map for all broker-partitions for the topics in this consumerid: topic->[brokerid0-partition0,...,brokeridN-partitionN]
+            // 获取/brokers/topics/topic-name集群中所有的topic的broker
             Map<String, List<String>> brokerPartitionsPerTopicMap = ZkUtils.getPartitionsForTopics(zkClient,
                     myTopicThreadIdsMap.keySet());
             /*
@@ -532,20 +557,29 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
              * the fetchers leads to duplicate data.
              */
             closeFetchers(messagesStreams, myTopicThreadIdsMap);
+            // 清理topic的分区信息
+            // /consumer/group-name/owners/topic-name
             releasePartitionOwnership(topicRegistry);
-            //
+            // 重新生成topic的分区信息
             Map<StringTuple, String> partitionOwnershipDecision = new HashMap<StringTuple, String>();
             Pool<String, Pool<Partition, PartitionTopicInfo>> currentTopicRegistry = new Pool<String, Pool<Partition, PartitionTopicInfo>>();
             for (Map.Entry<String, Set<String>> e : myTopicThreadIdsMap.entrySet()) {
+                // e表示 当前消费端，每个topic有多少个消费线程
+                // consumerIdString 在消费端启动后就生成了当前消费端的唯一编号
                 final String topic = e.getKey();
                 currentTopicRegistry.put(topic, new Pool<Partition, PartitionTopicInfo>());
                 //
                 ZkGroupTopicDirs topicDirs = new ZkGroupTopicDirs(group, topic);
+                ///////////////////////////// 对整个集群做处理 /////////////////////////
+                // 获取topic在整个集群中的消费线程id
                 List<String> curConsumers = consumersPerTopicMap.get(topic);
+                // 获取topic整个集群中的brokers
                 List<String> curBrokerPartitions = brokerPartitionsPerTopicMap.get(topic);
-
+                // 每个消费线程应该分配的broker的数目
                 final int nPartsPerConsumer = curBrokerPartitions.size() / curConsumers.size();
+                // 剩余的broker的数目
                 final int nConsumersWithExtraPart = curBrokerPartitions.size() % curConsumers.size();
+                ///////////////////////////// 对整个集群做处理 /////////////////////////
                 logger.info("Consumer {} rebalancing the following {} partitions of topic {}:\n\t{}\n\twith {} consumers:\n\t{}",//
                         consumerIdString,curBrokerPartitions.size(),topic,curBrokerPartitions,curConsumers.size(),curConsumers
                         );
@@ -566,6 +600,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                 }
                 //consumerThreadId=> groupid_consumerid-index (index from count)
                 for (String consumerThreadId : e.getValue()) {
+                    // 对当前topic，消费端线程号所在index
                     final int myConsumerPosition = curConsumers.indexOf(consumerThreadId);
                     assert (myConsumerPosition >= 0);
                     final int startPart = nPartsPerConsumer * myConsumerPosition + Math.min(myConsumerPosition,
@@ -586,6 +621,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                             addPartitionTopicInfo(currentTopicRegistry, topicDirs, brokerPartition, topic,
                                     consumerThreadId);
                             // record the partition ownership decision
+                            // topic的partition 由哪个消费线程在消费
                             partitionOwnershipDecision.put(new StringTuple(topic, brokerPartition), consumerThreadId);
                         }
                     }
@@ -597,11 +633,14 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
              * successful rebalancing attempt A rebalancing attempt is completed successfully
              * only after the fetchers have been started correctly
              */
+            // 重建构建 /consumer/group-name/owners/topic-name/broker-partition
             if (reflectPartitionOwnershipDecision(partitionOwnershipDecision)) {
                 logger.debug("Updating the cache");
                 logger.debug("Partitions per topic cache " + brokerPartitionsPerTopicMap);
                 logger.debug("Consumers per topic cache " + consumersPerTopicMap);
+                // 更新最新的集群分区消费信息
                 topicRegistry = currentTopicRegistry;
+                // 开启所有的topic的broker消费连接
                 updateFetcher(cluster, messagesStreams);
                 return true;
             } else {
@@ -621,6 +660,8 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         }
 
         private boolean reflectPartitionOwnershipDecision(Map<StringTuple, String> partitionOwnershipDecision) {
+            // 记录已经创建成功的/consumer/group-name/owners/topic-name/broker-partition
+            // 如果整个过程失败了，还可以删除
             final List<StringTuple> successfullyOwnerdPartitions = new ArrayList<StringTuple>();
             int hasPartitionOwnershipFailed = 0;
             for (Map.Entry<StringTuple, String> e : partitionOwnershipDecision.entrySet()) {
@@ -630,6 +671,8 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                 final ZkGroupTopicDirs topicDirs = new ZkGroupTopicDirs(group, topic);
                 final String partitionOwnerPath = topicDirs.consumerOwnerDir + "/" + brokerPartition;
                 try {
+                    // 重新构建 /consumer/group-name/owners/topic-name/broker-partition
+                    // data 是consumerIdString  记录由哪个线程号在消费
                     ZkUtils.createEphemeralPathExpectConflict(zkClient, partitionOwnerPath, consumerThreadId);
                     successfullyOwnerdPartitions.add(new StringTuple(topic, brokerPartition));
                 } catch (ZkNodeExistsException e2) {
@@ -652,17 +695,28 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
 
         private void addPartitionTopicInfo(Pool<String, Pool<Partition, PartitionTopicInfo>> currentTopicRegistry,
                                            ZkGroupTopicDirs topicDirs, String brokerPartition, String topic, String consumerThreadId) {
+            // brokerId-partitionId, 对于当前topic
             Partition partition = Partition.parse(brokerPartition);
             Pool<Partition, PartitionTopicInfo> partTopicInfoMap = currentTopicRegistry.get(topic);
-
+            // /consumer/group-name/offsets/topic-name/brokerId-partId
+            // 记录当前消费线程消费topic-partition的偏移量
             final String znode = topicDirs.consumerOffsetDir + "/" + partition.getName();
             String offsetString = ZkUtils.readDataMaybeNull(zkClient, znode);
             // If first time starting a consumer, set the initial offset based on the config
+            // 这个offset很有意思， 用于指定消费端消费的位置
+            // 如果offset不存在
+            // SMAALLES_TIME_STRING 就是从topic-partition目录第一个LogSegment开始消费
+            // LARGEST_TIME_STRING 就是从topic-partition目录的最后一个LogSegment开始消费
+            // 否则 接着从之前的offset继续消费
             long offset;
             if (offsetString == null) {
+                // 获取topic-partition文件夹下的offset
+
+                // SMALLES_TIME_STRING，就是获取topic-partition下第一个的LogSegment start
                 if (OffsetRequest.SMALLES_TIME_STRING.equals(config.getAutoOffsetReset())) {
                     offset = earliestOrLatestOffset(topic, partition.brokerId, partition.partId,
                             OffsetRequest.EARLIES_TTIME);
+                    // LARGEST_TIME_STRING，就是获取topic-partition下最后一个的LogSegment start
                 } else if (OffsetRequest.LARGEST_TIME_STRING.equals(config.getAutoOffsetReset())) {
                     offset = earliestOrLatestOffset(topic, partition.brokerId, partition.partId,
                             OffsetRequest.LATES_TTIME);
@@ -673,9 +727,13 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
             } else {
                 offset = Long.parseLong(offsetString);
             }
+            // 对于当前topic,获取消费线程的数据块，初始化的时候设定了队列的大小
             BlockingQueue<FetchedDataChunk> queue = queues.get(new StringTuple(topic, consumerThreadId));
+            // 消费的偏移量
             AtomicLong consumedOffset = new AtomicLong(offset);
+            // 抓取数据的偏移量
             AtomicLong fetchedOffset = new AtomicLong(offset);
+            // 构建分区信息
             PartitionTopicInfo partTopicInfo = new PartitionTopicInfo(topic,//
                     partition,//
                     queue,//
@@ -700,6 +758,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                 //using default value???
                 simpleConsumer = new SimpleConsumer(broker.host, broker.port, config.getSocketTimeoutMs(),
                         config.getSocketBufferSize());
+                // 发送给broker请求，获取offset
                 long[] offsets = simpleConsumer.getOffsetsBefore(topic, partitionId, earliestOrLatest, 1);
                 if (offsets.length > 0) {
                     producedOffset = offsets[0];
@@ -728,6 +787,8 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
 
         private void deletePartitionOwnershipFromZK(String topic, String partitionStr) {
             ZkGroupTopicDirs topicDirs = new ZkGroupTopicDirs(group, topic);
+            // /consumer/group-name/owners/topic-name
+            // 删除  /consumer/group-name/owners/topic-name/brokerId-partId
             final String znode = topicDirs.consumerOwnerDir + "/" + partitionStr;
             ZkUtils.deletePath(zkClient, znode);
             logger.debug("Consumer [" + consumerIdString + "] released " + znode);
@@ -743,6 +804,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
             // topicRegistry.values()
             List<BlockingQueue<FetchedDataChunk>> queuesToBeCleared = new ArrayList<BlockingQueue<FetchedDataChunk>>();
             for (Map.Entry<StringTuple, BlockingQueue<FetchedDataChunk>> e : queues.entrySet()) {
+                // 如果当前消费线程中包含queue中topic,则需要清理
                 if (myTopicThreadIdsMap.containsKey(e.getKey().k)) {
                     queuesToBeCleared.add(e.getValue());
                 }
@@ -755,7 +817,9 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
             if (fetcher == null) {
                 return;
             }
+            // 关闭与所有broker的connection
             fetcher.stopConnectionsToAllBrokers();
+            // 关闭Fetcher,清理内存数据
             fetcher.clearFetcherQueues(queuesToBeCleared, messageStreams.values());
             if (config.isAutoCommit()) {
                 logger.info("Committing all offsets after clearing the fetcher queues");
@@ -763,6 +827,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
             }
         }
 
+        // 清理topic的broker分区消费信息
         private void resetState() {
             topicRegistry.clear();
         }
@@ -803,9 +868,12 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
          */
         void registerConsumer(){
             final String path = zkGroupDirs.consumerRegistryDir + "/" + consumerIdString;
+            // topicCountMap转为json数据
             final String data = topicCount.toJsonString();
             boolean ok = true;
             try {
+                // 创建/consumers/group-name/ids/consumerIdString
+                // data为topicCountMap的json
                 ZkUtils.createEphemeralPathExpectConflict(zkClient, path, data);
             }catch (Exception ex){
                 ok = false;
