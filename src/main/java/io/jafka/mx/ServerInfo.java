@@ -23,6 +23,8 @@ import java.util.Date;
 import static java.lang.String.format;
 
 /**
+ * 简单的服务器信息
+ *
  * Some thing about the Jafka server
  *
  * @author adyliu (imxylz@gmail.com)

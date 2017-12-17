@@ -62,8 +62,9 @@ class Acceptor extends AbstractServerThread {
         //
         logger.debug("Awaiting connection on port "+port);
         startupComplete();
-        //
+        // 用于轮训下一个processor
         int currentProcessor = 0;
+        // 一直轮训处理请求
         while(isRunning()) {
             int ready = -1;
             try {
@@ -89,6 +90,8 @@ class Acceptor extends AbstractServerThread {
                     logger.error("Error in acceptor",t);
                 }
             }
+
+        // 服务器关闭
         //run over
         logger.info("Closing server socket and selector.");
         Closer.closeQuietly(serverChannel, logger);
@@ -105,7 +108,7 @@ class Acceptor extends AbstractServerThread {
         socketChannel.configureBlocking(false);
         socketChannel.socket().setTcpNoDelay(true);
         socketChannel.socket().setSendBufferSize(sendBufferSize);
-        //
+        // processor添加到异步队列
         processor.accept(socketChannel);
     }
 

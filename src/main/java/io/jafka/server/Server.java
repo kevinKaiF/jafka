@@ -90,14 +90,16 @@ public class Server implements Closeable {
                     needRecovery);
             this.logManager.setRollingStategy(config.getRollingStrategy());
             logManager.load();
-
+            // 初始化所有处理客户端请求的requestMapping
             RequestHandlers handlers = new RequestHandlers(logManager);
+            // 初始化SocketServer,socketServer封装了Acceptor,Processor
             socketServer = new SocketServer(handlers, config);
             Utils.registerMBean(socketServer.getStats());
             socketServer.startup();
-            //
+            // 默认没有开启http服务器
             final int httpPort = config.getHttpPort();
             if (httpPort > 0) {
+                // 这个HttpRequestHandler仅仅用于http方式存储日志
                 HttpRequestHandler httpRequestHandler = new HttpRequestHandler(logManager);
                 httpServer = new HttpServer(httpPort, httpRequestHandler);
                 httpServer.start();

@@ -26,8 +26,9 @@ package io.jafka.message;
  */
 public class MessageAndOffset {
 
+    // 这个message是当前日志文件中的一个片段
     public final Message message;
-
+    // offset是当前日志片段在日志文件中的起始position
     public final long offset;
 
     public MessageAndOffset(Message message, long offset) {

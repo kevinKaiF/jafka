@@ -54,12 +54,17 @@ public class SocketServer implements Closeable {
         super();
         this.serverConfig = serverConfig;
         this.handlerFactory = handlerFactory;
+        // max.socket.request.bytes 请求最大的字节数目，默认 10 * 1024 * 1024 字节数
         this.maxRequestSize = serverConfig.getMaxSocketRequestSize();
+        // num.threads 处理客户端请求的线程数目
         this.processors = new Processor[serverConfig.getNumThreads()];
         this.stats = new SocketServerStats(1000L * 1000L * 1000L * serverConfig.getMonitoringPeriodSecs());
+        // acceptor 请求接收器， processors专门用来异步处理请求
         this.acceptor = new Acceptor(serverConfig.getPort(), //
                 processors, //
+                // socket.send.buffer 默认 10 * 1024  10k
                 serverConfig.getSocketSendBuffer(), //
+                // socket.receive.buffer 默认 10 * 1024 10k
                 serverConfig.getSocketReceiveBuffer());
     }
 
