@@ -47,6 +47,7 @@ public class FileMessageSet extends MessageSet {
 
     private final FileChannel channel;
 
+    // 这个offset是文件读取字节的偏移量
     private final long offset;
 
     private final boolean mutable;
@@ -135,14 +136,21 @@ public class FileMessageSet extends MessageSet {
             @Override
             protected MessageAndOffset makeNext() {
                 try {
-
+                    // 获取4个字节的message大小值
                     ByteBuffer sizeBuffer = ByteBuffer.allocate(4);
                     channel.read(sizeBuffer, location);
+                    // 理应读到4个字节，此时的position == limit == 4
+                    // 如果ByteBuffer还有剩余空间，说明读取是有问题的
                     if (sizeBuffer.hasRemaining()) {
                         return allDone();
                     }
                     sizeBuffer.rewind();
+                    // 这个大小不仅包含6个字节的首部，还有N-6个字节的payload
                     int size = sizeBuffer.getInt();
+                    // 1个字节 magic
+                    // 1个字节 attributes
+                    // 4个字节 crc32
+                    // 不能少于6个字节
                     if (size < Message.MinHeaderSize) {
                         return allDone();
                     }
@@ -184,8 +192,10 @@ public class FileMessageSet extends MessageSet {
      * @return messages sharding data with file log
      * @throws IOException reading file failed
      */
+    // 这个readOffset是文件的offset,不是message的offset
     public MessageSet read(long readOffset, long size) throws IOException {
-        return new FileMessageSet(channel, this.offset + readOffset, //
+        // 共享channel
+        return new FileMessageSet(channel, this.offset + readOffset,
                 Math.min(this.offset + readOffset + size, highWaterMark()), false, new AtomicBoolean(false));
     }
 
@@ -234,6 +244,7 @@ public class FileMessageSet extends MessageSet {
      * Recover log up to the last complete entry. Truncate off any bytes from any incomplete
      * messages written
      *
+     * @return truncate掉的字节数
      * @throws IOException any exception
      */
     private long recover() throws IOException {
@@ -246,7 +257,9 @@ public class FileMessageSet extends MessageSet {
             next = validateMessage(channel, validUpTo, len, buffer);
             if (next >= 0) validUpTo = next;
         } while (next >= 0);
+        // 将validUpTo之后的byte删除
         channel.truncate(validUpTo);
+        // 更新文件大小
         setSize.set(validUpTo);
         setHighWaterMark.set(validUpTo);
         logger.info("recover high water mark:" + highWaterMark());
@@ -264,26 +277,37 @@ public class FileMessageSet extends MessageSet {
      */
     private long validateMessage(FileChannel channel, long start, long len, ByteBuffer buffer) throws IOException {
         buffer.rewind();
+        // 获取message的大小
         int read = channel.read(buffer, start);
         if (read < 4) return -1;
 
         // check that we have sufficient bytes left in the file
+        // getInt(int index)是从绝对位置开始读取，与当前的position无关，position不会变化
+        // getInt()是从相对位置开始读取，从当前的position读取，而且position += 4移动到下个位置
+        // 这个size，不仅有6个字节的头部，还有N-6个字节的payload
         int size = buffer.getInt(0);
+        // 如果小于头部字节个数，直接返回
         if (size < Message.MinHeaderSize) return -1;
 
+        // 最新的读取位置，start是偏移量，4个字节是需要读取的message length大小，size是message数据大小
         long next = start + 4 + size;
         if (next > len) return -1;
 
         // read the message
         ByteBuffer messageBuffer = ByteBuffer.allocate(size);
         long curr = start + 4;
+        // 一直读完
         while (messageBuffer.hasRemaining()) {
             read = channel.read(messageBuffer, curr);
+            // 如果没读到，说明文件发生了更改，按道理是肯定能读到数据的，因为messageBuffer大小是按其真实的size分配的
             if (read < 0) throw new IllegalStateException("File size changed during recovery!");
+            // 位置累加
             else curr += read;
         }
+        // 需要重置position
         messageBuffer.rewind();
         Message message = new Message(messageBuffer);
+        // 校验crc32
         if (!message.isValid()) return -1;
         else return next;
     }

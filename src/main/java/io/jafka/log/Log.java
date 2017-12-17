@@ -17,7 +17,17 @@
 
 package io.jafka.log;
 
-import static java.lang.String.format;
+import io.jafka.api.OffsetRequest;
+import io.jafka.common.InvalidMessageSizeException;
+import io.jafka.common.OffsetOutOfRangeException;
+import io.jafka.message.*;
+import io.jafka.mx.BrokerTopicStat;
+import io.jafka.mx.LogStats;
+import io.jafka.utils.KV;
+import io.jafka.utils.Range;
+import io.jafka.utils.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -33,22 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-
-import io.jafka.api.OffsetRequest;
-import io.jafka.common.InvalidMessageSizeException;
-import io.jafka.common.OffsetOutOfRangeException;
-import io.jafka.message.ByteBufferMessageSet;
-import io.jafka.message.FileMessageSet;
-import io.jafka.message.InvalidMessageException;
-import io.jafka.message.MessageAndOffset;
-import io.jafka.message.MessageSet;
-import io.jafka.mx.BrokerTopicStat;
-import io.jafka.mx.LogStats;
-import io.jafka.utils.KV;
-import io.jafka.utils.Range;
-import io.jafka.utils.Utils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static java.lang.String.format;
 
 /**
  * a log is message sets with more than one files.
@@ -172,7 +167,9 @@ public class Log implements ILog {
      */
     public int delete() {
         close();
+        // 这个trunc 会删除内存中的全部LogSegment
        int count = segments.trunc(Integer.MAX_VALUE).size();
+        // 删除文件
        Utils.deleteDirectory(dir);
        return count;
     }
@@ -181,6 +178,7 @@ public class Log implements ILog {
         synchronized (lock) {
             for (LogSegment seg : segments.getView()) {
                 try {
+                    // 关闭流
                     seg.getMessageSet().close();
                 } catch (IOException e) {
                     logger.error("close file message set failed", e);
@@ -202,6 +200,7 @@ public class Log implements ILog {
      */
     public MessageSet read(long offset, int length) throws IOException {
         List<LogSegment> views = segments.getView();
+        // 找到offset所在的LogSegment
         LogSegment found = findRange(views, offset, views.size());
         if (found == null) {
             if (logger.isTraceEnabled()) {
@@ -326,10 +325,13 @@ public class Log implements ILog {
      * Takes the array size as an option in case the array grows while searching happens
      * @param <T> Range type
      * @param ranges data list
-     * @param value value in the list
+     * @param value value in the list，
      * @param arraySize the max search index of the list
      * @return search result of range
      * TODO: This should move into SegmentList.scala
+     *
+     * 这个value实际上是offset，SegmentList包含了全部了文件，即List<LogSegment>，而LogSegment中的start是每个小文件的起始位置，或者说偏移位置，
+     * size()方法呢，能计算出这个LogSegment的大小
      */
     public static <T extends Range> T findRange(List<T> ranges, long value, int arraySize) {
         if (ranges.size() < 1) return null;
@@ -349,6 +351,9 @@ public class Log implements ILog {
         while (low <= high) {
             int mid = (high + low) / 2;
             T found = ranges.get(mid);
+            // 这个contain非常关键，value是文件的偏移位置，contains的计算是通过LogSegment的start和size来确定的，
+            // 每个LogSegment的偏移范围是[start, start + offset]
+            // contains就用用来判断，value在不在这个范围内
             if (found.contains(value)) {
                 return found;
             } else if (value < found.start()) {
@@ -462,6 +467,7 @@ public class Log implements ILog {
             startIndex = 0;
         } else {
             boolean isFound = false;
+            // 从最后一个文件开始遍历，因为文件是有序的，按时间顺序的
             startIndex = offsetTimes.size() - 1;
             for (; !isFound && startIndex >= 0; startIndex--) {
                 if (offsetTimes.get(startIndex).v <= requestTime) {

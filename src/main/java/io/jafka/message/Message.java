@@ -17,13 +17,13 @@
 
 package io.jafka.message;
 
-import static java.lang.String.format;
-
-import java.nio.ByteBuffer;
-
 import io.jafka.api.ICalculable;
 import io.jafka.common.UnknownMagicByteException;
 import io.jafka.utils.Utils;
+
+import java.nio.ByteBuffer;
+
+import static java.lang.String.format;
 
 /**
  * * A message. The format of an N byte message is the following:
@@ -185,6 +185,9 @@ public class Message implements ICalculable {
     }
 
     public long checksum() {
+        // 1个字节magic
+        // 1个字节的attributes
+        // getInt(2) 从2的位置读取crc32
         return Utils.getUnsignedInt(buffer, crcOffset(magic()));
     }
 
