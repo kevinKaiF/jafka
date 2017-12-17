@@ -17,18 +17,20 @@
 
 package io.jafka.network;
 
-import static java.lang.String.format;
+import io.jafka.common.annotations.ServerSide;
+import io.jafka.utils.Utils;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
 
-import io.jafka.common.annotations.ServerSide;
-import io.jafka.utils.Utils;
+import static java.lang.String.format;
 
 /**
  * Receive data from socket
- * 
+ *
+ * 专门从socket中读取数据
+ *
  * @author adyliu (imxylz@gmail.com)
  * @since 1.0
  */
@@ -52,26 +54,31 @@ public class BoundedByteBufferReceive extends AbstractTransmission implements Re
     public int readFrom(ReadableByteChannel channel) throws IOException {
         expectIncomplete();
         int read = 0;
+        // 如果sizeBuffer中有剩余的空间，就先读取channel中的数据到sizeBuffer中
         if (sizeBuffer.remaining() > 0) {
             read += Utils.read(channel, sizeBuffer);
         }
-        //
+        // 如果已经读取了大小，还未读取真正的数据
         if (contentBuffer == null && !sizeBuffer.hasRemaining()) {
             sizeBuffer.rewind();
+            // 获取整个数据的大小
             int size = sizeBuffer.getInt();
             if (size <= 0) {
                 throw new InvalidRequestException(format("%d is not a valid request size.", size));
             }
+            // max.socket.request.bytes 请求最大的字节数目，默认 10 * 1024 * 1024 字节数
+            // 判断请求的数据是否大于最大的请求字节数目大小
             if (size > maxRequestSize) {
                 final String msg = "Request of length %d is not valid, it is larger than the maximum size of %d bytes.";
                 throw new InvalidRequestException(format(msg, size, maxRequestSize));
             }
+            // 按指定的大小分配ByteBuffer大小
             contentBuffer = byteBufferAllocate(size);
         }
-        //
+        // 创建好contentBuffer大小后，将channel的数据读入到contentBuffer中
         if (contentBuffer != null) {
             read = Utils.read(channel, contentBuffer);
-            //
+            // 如果contentBuffer的数据读满了，则需要rewind下position，并设置为已读取完毕
             if (!contentBuffer.hasRemaining()) {
                 contentBuffer.rewind();
                 setCompleted();
@@ -80,6 +87,13 @@ public class BoundedByteBufferReceive extends AbstractTransmission implements Re
         return read;
     }
 
+    /**
+     * 从Channel中读取全部的数据
+     *
+     * @param channel
+     * @return
+     * @throws IOException
+     */
     public int readCompletely(ReadableByteChannel channel) throws IOException {
         int read = 0;
         while (!complete()) {
@@ -88,6 +102,9 @@ public class BoundedByteBufferReceive extends AbstractTransmission implements Re
         return read;
     }
 
+    /**
+     * 获取请求的数据载体
+     */
     public ByteBuffer buffer() {
         expectComplete();
         return contentBuffer;

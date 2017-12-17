@@ -90,6 +90,16 @@ public class CreaterRequest implements Request {
         return String.format("CreateRequest [topic=%s, partitions=%s, enlarge=%s]", topic, partitions, enlarge);
     }
 
+    /**
+     * 数据格式
+     * 2-topic.size     |short          |4          |1              |
+     * topic-size       |topic          |partition  |forceEnlarge   |
+     *
+     * forceEnlarge是分区扩容标志
+     *
+     * @param buffer
+     * @return
+     */
     public static CreaterRequest readFrom(ByteBuffer buffer) {
         String topic = Utils.readShortString(buffer);
         int partitions = buffer.getInt();

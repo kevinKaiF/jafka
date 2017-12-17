@@ -69,6 +69,13 @@ public abstract class MultiSend<S extends Send> extends AbstractSend {
         return true;
     }
 
+    /**
+     * 遍历写出到channel
+     *
+     * @param channel
+     * @return
+     * @throws IOException
+     */
     public int writeTo(GatheringByteChannel channel) throws IOException {
         expectIncomplete();
         int written = current.writeTo(channel);

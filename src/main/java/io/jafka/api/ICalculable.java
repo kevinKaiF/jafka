@@ -30,5 +30,6 @@ public interface ICalculable {
      * 
      * @return the object size
      */
+    // 获取当前对象的字节大小
     int getSizeInBytes();
 }

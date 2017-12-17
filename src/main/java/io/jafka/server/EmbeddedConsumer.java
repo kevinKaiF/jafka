@@ -103,9 +103,18 @@ public class EmbeddedConsumer implements TopicEventHandler<String> {
         producer.close();
     }
 
+    /**
+     * 处理topic变化的回调
+     *
+     * @param allTopics
+     */
     public void handleTopicEvent(List<String> allTopics) {
+        // 如果whiteListTopics包含，或者blackListTopics不包含，则添加到newMirrorTopics
         List<String> newMirrorTopics = new ArrayList<String>();
+        // 如果mirrorTopics不包含topic,则添加到addedTopics
+        // 新增的topic
         List<String> addedTopics = new ArrayList<String>();
+        // 删除的topic
         List<String> deletedTopics = new ArrayList<String>();
         final Map<String, Integer> topicCountMap = new LinkedHashMap<String, Integer>();
         for (String topic : allTopics) {
@@ -117,22 +126,24 @@ public class EmbeddedConsumer implements TopicEventHandler<String> {
             }
             if (newTopic) {
                 newMirrorTopics.add(topic);
+                // mirror.consumer.numthreads 默认1
                 topicCountMap.put(topic, consumerConfig.getMirrorConsumerNumThreads());
+                // 如果历史topic没有包含topic，说明topic是新增的，添加到addedTopics
                 if (!mirrorTopics.contains(topic)) {
                     addedTopics.add(topic);
                 }
             }
         }
         //
-        //
+        // 遍历历史topic mirrorTopics，如果newMirrorTopics不包含，说明需要删除该topic
         for (String topic : mirrorTopics) {
             if (!newMirrorTopics.contains(topic)) {
                 deletedTopics.add(topic);
             }
         }
-        //
+        // 更新
         mirrorTopics = newMirrorTopics;
-        //
+        // 如果topic新增了，或者topic删除了
         if (!addedTopics.isEmpty() || !deletedTopics.isEmpty()) {
             startNewConsumerThreads(topicCountMap);
         }

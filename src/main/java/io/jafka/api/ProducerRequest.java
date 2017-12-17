@@ -17,13 +17,13 @@
 
 package io.jafka.api;
 
-import java.nio.ByteBuffer;
-
 import io.jafka.common.annotations.ClientSide;
 import io.jafka.common.annotations.ServerSide;
 import io.jafka.message.ByteBufferMessageSet;
 import io.jafka.network.Request;
 import io.jafka.utils.Utils;
+
+import java.nio.ByteBuffer;
 
 /**
  * message producer request
@@ -55,11 +55,18 @@ public class ProducerRequest implements Request {
      * @return parsed producer request
      */
     public static ProducerRequest readFrom(ByteBuffer buffer) {
+        // 2个字节的topic.size N
+        // N个字节topic
         String topic = Utils.readShortString(buffer);
+        // 4个字节的partition
         int partition = buffer.getInt();
+        // 4个字节的Byte
         int messageSetSize = buffer.getInt();
+        // 从当前position截取所有的数据
         ByteBuffer messageSetBuffer = buffer.slice();
+        // 设置limit
         messageSetBuffer.limit(messageSetSize);
+        // 重置请求数据体的position
         buffer.position(buffer.position() + messageSetSize);
         return new ProducerRequest(topic, partition, new ByteBufferMessageSet(messageSetBuffer));
     }
@@ -90,6 +97,8 @@ public class ProducerRequest implements Request {
     }
 
     public int getSizeInBytes() {
+        // 4个字节partition
+        // 4个字节messages的大小
         return (int) (Utils.caculateShortString(topic) + 4 + 4 + messages.getSizeInBytes());
     }
 
@@ -110,10 +119,15 @@ public class ProducerRequest implements Request {
     }
 
     public void writeTo(ByteBuffer buffer) {
+        // 2个字节topic的size N
+        // N个字节topic
+        // 4个字节的partition
         Utils.writeShortString(buffer, topic);
         buffer.putInt(partition);
         final ByteBuffer sourceBuffer = messages.serialized();
+        // 4个字节 ByteBufferMessageSet的大小
         buffer.putInt(sourceBuffer.limit());
+        // 写出
         buffer.put(sourceBuffer);
         sourceBuffer.rewind();
     }

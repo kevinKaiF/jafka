@@ -17,11 +17,11 @@
 
 package io.jafka.api;
 
+import io.jafka.network.Request;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-
-import io.jafka.network.Request;
 
 /**
  * Multi-Messages (maybe without same topic)
@@ -44,6 +44,7 @@ public class MultiProducerRequest implements Request {
         if (produces.size() > Short.MAX_VALUE) {
             throw new IllegalArgumentException("Number of requests in MultiFetchRequest exceeds " + Short.MAX_VALUE + ".");
         }
+        // 2个字节 记录produces的size
         buffer.putShort((short) produces.size());
         for (ProducerRequest produce : produces) {
             produce.writeTo(buffer);
@@ -51,6 +52,7 @@ public class MultiProducerRequest implements Request {
     }
 
     public int getSizeInBytes() {
+        // 2个字节produces.size
         int size = 2;
         for (ProducerRequest produce : produces) {
             size += produce.getSizeInBytes();
@@ -68,6 +70,7 @@ public class MultiProducerRequest implements Request {
     }
 
     public static MultiProducerRequest readFrom(ByteBuffer buffer) {
+        // 读取2字节produces.size()
         int count = buffer.getShort();
         List<ProducerRequest> produces = new ArrayList<ProducerRequest>(count);
         for (int i = 0; i < count; i++) {

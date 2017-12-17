@@ -27,15 +27,19 @@ import io.jafka.consumer.ZookeeperConsumerConnector;
 public class ZkGroupDirs {
 
     /** group name */
+    // 消费分组名称
     public final String group;
 
     /** '/consumers' */
+    // /consumers zk上的消费目录
     public final String consumerDir;
 
+    // /consumers/group-name zk上的消费组目录
     /** '/consumers/&lt;group&gt;' */
     public final String consumerGroupDir;
 
     /** '/consumers/&lt;group&gt;/ids' */
+    // /consumers/group-name/ids 消费端注册的id
     public final String consumerRegistryDir;
 
     public ZkGroupDirs(String group) {

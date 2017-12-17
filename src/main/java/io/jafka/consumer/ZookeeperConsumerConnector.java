@@ -213,6 +213,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         Map<String, List<MessageStream<T>>> ret = new HashMap<String, List<MessageStream<T>>>();
         String consumerUuid = config.getConsumerId();
         if (consumerUuid == null) {
+            // 如果没有指定consumerId则生成随机数
             consumerUuid = generateConsumerId();
         }
         logger.info(format("create message stream by consumerid [%s] with groupid [%s]", consumerUuid,
@@ -220,33 +221,46 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         //
         //consumerIdString => groupid_consumerid
         final String consumerIdString = config.getGroupId() + "_" + consumerUuid;
+        // 消费端有一个consumerIdString,去消费多个topic
         final TopicCount topicCount = new TopicCount(consumerIdString, topicCountMap);
         for (Map.Entry<String, Set<String>> e : topicCount.getConsumerThreadIdsPerTopic().entrySet()) {
             final String topic = e.getKey();
             final Set<String> threadIdSet = e.getValue();
             final List<MessageStream<T>> streamList = new ArrayList<MessageStream<T>>();
             for (String threadId : threadIdSet) {
+                // queuedchunks.max 默认10
+                // 每个topic的，每个消费线程有Queue<FetchedDataChunk>
                 LinkedBlockingQueue<FetchedDataChunk> stream = new LinkedBlockingQueue<FetchedDataChunk>(
                         config.getMaxQueuedChunks());
+                // key:topic + groupId_consumer_id,value:Queue<FetchedDataChunk>
                 queues.put(new StringTuple(topic, threadId), stream);
+                // consumer.timeout.ms 客户端消费超时毫秒数
                 streamList.add(new MessageStream<T>(topic, stream, config.getConsumerTimeoutMs(), decoder));
             }
+            // 每个topic有个List<MessageStream<T>>
             ret.put(topic, streamList);
             logger.debug("adding topic " + topic + " and stream to map.");
         }
 
         //listener to consumer and partition changes
+        // 重新负载均衡
         ZKRebalancerListener<T> loadBalancerListener = new ZKRebalancerListener<T>(config.getGroupId(),dirs,topicCount, consumerIdString, ret);
+
         this.rebalancerListeners.add(loadBalancerListener);
         // register consumer first
+        // 注册消费客户端到zk
         loadBalancerListener.registerConsumer();
         //
         //register listener for session expired event
+        // 监听zk的state变化
         zkClient.subscribeStateChanges(loadBalancerListener);
+        // 监听/consumers/group-name/ids 即消费端的变化
         zkClient.subscribeChildChanges(dirs.consumerRegistryDir, loadBalancerListener);
         // start the thread after watcher prepared
+        // 开启线程，监听客户端消费节点的变化，准备rebalance
         loadBalancerListener.start();
 
+        // 监听每个topic下的分区变化，准备rebalance
         for (String topic : ret.keySet()) {
             //register on broker partition path changes
             final String partitionPath = ZkUtils.BrokerTopicsPath + "/" + topic;
@@ -450,6 +464,9 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
             shutDownLatch.countDown();
         }
 
+        /**
+         * 重新均衡客户端的消费
+         */
         private void syncedRebalance() {
             synchronized (rebalanceLock) {
                 for (int i = 0; i < config.getMaxRebalanceRetries(); i++) {

@@ -32,6 +32,8 @@ import java.io.IOException;
 import java.util.List;
 
 /**
+ * 监控topic的变化
+ *
  * @author adyliu (imxylz@gmail.com)
  * @since 1.0
  */
@@ -52,7 +54,9 @@ public class ZookeeperTopicEventWatcher implements Closeable {
         super();
         this.eventHandler = eventHandler;
         this.serverStartable = serverStartable;
-        //
+        // zk.connect zk的连接地址
+        // zk.sessiontimeout.ms session超时时间，默认6s
+        // zk.connectiontimeout.ms zk连接超时时间
         this.zkClient = new ZkClient(consumerConfig.getZkConnect(), //
                 consumerConfig.getZkSessionTimeoutMs(), //
                 consumerConfig.getZkConnectionTimeoutMs());
@@ -62,15 +66,20 @@ public class ZookeeperTopicEventWatcher implements Closeable {
     }
 
     private void startWatchingTopicEvents() {
-
+        // ZkTopicEventListener监听/brokers/topics的子节点变化，比如创建topic,删除topic等
+        // /brokers/topics下面都是创建的child，都是每个topic的名称
+        // /brokers/topics/topic-name/partitions/partition-name/state
         ZkTopicEventListener topicEventListener = new ZkTopicEventListener();
+        // 如果不存在，则创建/brokers/topics
         ZkUtils.makeSurePersistentPathExists(zkClient, ZkUtils.BrokerTopicsPath);
+        // 订阅zk的stateChange,session过期的监听
         zkClient.subscribeStateChanges(new ZkSessionExpireListener(topicEventListener));
-
+        // 监听/brokers/topics下的child变化，返回当前/brokers/topics下所有的child
         List<String> topics = zkClient.subscribeChildChanges(ZkUtils.BrokerTopicsPath, topicEventListener);
         //
         // call to bootstrap topic list
         try {
+            // 回调处理
             topicEventListener.handleChildChange(ZkUtils.BrokerTopicsPath, topics);
         } catch (Exception e) {
             logger.error(e.getMessage(), e);

@@ -542,6 +542,7 @@ public class LogManager implements PartitionChooser, Closeable {
 
     /**
      * create logs with given partition number
+     * 更新topic的分区数目
      *
      * @param topic        the topic name
      * @param partitions   partition number
@@ -550,12 +551,18 @@ public class LogManager implements PartitionChooser, Closeable {
      */
     public int createLogs(String topic, final int partitions, final boolean forceEnlarge) {
         TopicNameValidator.validate(topic);
+        // 创建分区
         synchronized (logCreationLock) {
+            // 获取当前topic的分区数目，如果没有则是默认的num.partitions 分区数目
             final int configPartitions = getPartition(topic);
+            // 如果小于配置的分区大小，获取是非强制的，则直接返回分区数目
             if (configPartitions >= partitions || !forceEnlarge) {
                 return configPartitions;
             }
+
+            // 否则更新分区数目
             topicPartitionsMap.put(topic, partitions);
+            // 如果启用了zk，则更新到zk
             if (config.getEnableZookeeper()) {
                 if (getLogPool(topic, 0) != null) {//created already
                     topicRegisterTasks.add(new TopicTask(TopicTask.TaskType.ENLARGE, topic));
@@ -633,6 +640,7 @@ public class LogManager implements PartitionChooser, Closeable {
      * @return offsets before given time
      */
     public List<Long> getOffsets(OffsetRequest offsetRequest) {
+        // 先获取指定topic,指定partition的Log
         ILog log = getLog(offsetRequest.topic, offsetRequest.partition);
         if (log != null) {
             return log.getOffsetsBefore(offsetRequest);

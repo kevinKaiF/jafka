@@ -486,6 +486,8 @@ public class Utils {
     }
 
     public static ByteBuffer serializeArray(int[] numbers) {
+        // 4个字节  numbers的length
+        // 4 * numbers.length number是int类型，每个number需要4个字节
         int size = 4 + 4 * numbers.length;
         ByteBuffer buffer = ByteBuffer.allocate(size);
         buffer.putInt(numbers.length);

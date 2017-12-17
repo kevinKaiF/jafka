@@ -17,13 +17,13 @@
 
 package io.jafka.api;
 
-import java.nio.ByteBuffer;
-import java.util.List;
-
 import io.jafka.common.annotations.ClientSide;
 import io.jafka.common.annotations.ServerSide;
 import io.jafka.network.Request;
 import io.jafka.utils.Utils;
+
+import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * offset request
@@ -31,7 +31,9 @@ import io.jafka.utils.Utils;
  * Jafka will returns all offsets earlier than given time with max number
  * limit. The fist offset of result is the biggest and the the last is the
  * smallest.
- * 
+ *
+ * 就是获取指定topic,partition，按时间戳获取偏移量
+ *
  * @author adyliu (imxylz@gmail.com)
  * @since 1.0
  */
@@ -118,14 +120,33 @@ public class OffsetRequest implements Request {
     }
 
     ///////////////////////////////////////////////////////////////////////
+
+    /**
+     * offsetRequest的数据格式是
+     * 2(topic size)            |Short          |4              |8              |4              |
+     * topic-size               |topic          |partition      |time           |maxNumOffsets  |
+     *
+     * 前面2个字节，存储topic大小N，接着是N个字节存放topic的内容
+     * time 客户端请求时间戳
+     *
+     * @param buffer
+     * @return
+     */
     public static OffsetRequest readFrom(ByteBuffer buffer) {
         String topic = Utils.readShortString(buffer);
         int partition = buffer.getInt();
-        long offset = buffer.getLong();
+        long time = buffer.getLong();
         int maxNumOffsets = buffer.getInt();
-        return new OffsetRequest(topic, partition, offset, maxNumOffsets);
+        return new OffsetRequest(topic, partition, time, maxNumOffsets);
     }
 
+    /**
+     * 序列化offsets
+     * 前4个字节存储，整个offsets数据的size
+     * 8 * offsets.size() 因为offsets是long类型，需要8个字节
+     * @param offsets
+     * @return
+     */
     public static ByteBuffer serializeOffsetArray(List<Long> offsets) {
         int size = 4 + 8 * offsets.size();
         ByteBuffer buffer = ByteBuffer.allocate(size);
@@ -148,6 +169,13 @@ public class OffsetRequest implements Request {
         return buffer;
     }
 
+    /**
+     * 反序列化，
+     * 先读取int拿到offsets的size，再循环读取long
+     *
+     * @param buffer
+     * @return
+     */
     public static long[] deserializeOffsetArray(ByteBuffer buffer) {
         int size = buffer.getInt();
         long[] offsets = new long[size];

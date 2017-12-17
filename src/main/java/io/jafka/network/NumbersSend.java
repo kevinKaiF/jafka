@@ -17,12 +17,12 @@
 
 package io.jafka.network;
 
+import io.jafka.common.ErrorMapping;
+import io.jafka.utils.Utils;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.GatheringByteChannel;
-
-import io.jafka.common.ErrorMapping;
-import io.jafka.utils.Utils;
 
 /**
  * @author adyliu (imxylz@gmail.com)
@@ -41,14 +41,17 @@ public abstract class NumbersSend extends AbstractSend {
         expectIncomplete();
         int written = 0;
         // 因为之前已经rewind过
+        // header的数目如果还没有写出，则写出到channel
         if (header.hasRemaining()) {
             written += channel.write(header);
         }
 
         // 因为之前已经rewind过
+        // 如果contentBuffer还没有写出，则写出到channel
         if (!header.hasRemaining() && contentBuffer.hasRemaining()) {
             written += channel.write(contentBuffer);
         }
+        // 如果contentBuffer已经写满，则设置为已完成
         if (!contentBuffer.hasRemaining()) {
             setCompleted();
         }
@@ -58,6 +61,9 @@ public abstract class NumbersSend extends AbstractSend {
     public static class IntegersSend extends NumbersSend {
 
         public IntegersSend(int... numbers) {
+            // 4个字节存储  numbers的length
+            // 4 * numbers.length 是每个number都是int
+            // 最后2个字节存储ErrorMapping
             header.putInt(4 + numbers.length * 4 + 2);
             header.putShort(ErrorMapping.NoError.code);
             header.rewind();

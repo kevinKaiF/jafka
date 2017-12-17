@@ -17,16 +17,16 @@
 
 package io.jafka.consumer;
 
+import org.codehaus.jackson.JsonParseException;
+import org.codehaus.jackson.map.JsonMappingException;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.type.TypeReference;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-
-import org.codehaus.jackson.JsonParseException;
-import org.codehaus.jackson.map.JsonMappingException;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 
 /**
  * @author adyliu (imxylz@gmail.com)
@@ -49,7 +49,8 @@ public class TopicCount {
         this.topicCountMap = topicCountMap;
     }
     /**
-     * 
+     * key:topic,value: Set<>(consumerIdString-0,consumerIdString-1..)
+     *
      * @return topic-&gt;(consumerIdString-0,consumerIdString-1..)
      */
     public Map<String, Set<String>> getConsumerThreadIdsPerTopic() {

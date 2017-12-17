@@ -148,6 +148,9 @@ public class Processor extends AbstractServerThread {
         SocketChannel socketChannel = channelFor(key);
         int written = response.writeTo(socketChannel);
         stats.recordBytesWritten(written);
+        // 这个complete的作用有两个，
+        // 1 保证byteBuffer的数据只被处理一次
+        // 2 维护SelectionKey的状态转换，可读转为可写，可写转为可读
         if (response.complete()) {
             key.attach(null);
             key.interestOps(SelectionKey.OP_READ);
@@ -192,6 +195,8 @@ public class Processor extends AbstractServerThread {
      * Handle a completed request producing an optional response
      */
     private Send handle(SelectionKey key, Receive request) {
+        // Receive请求中，前两个字节用于保存请求的类型
+        // request.buffer只获取请求的数据载体
         final short requestTypeId = request.buffer().getShort();
         final RequestKeys requestType = RequestKeys.valueOf(requestTypeId);
         if (requestLogger.isTraceEnabled()) {
@@ -201,6 +206,7 @@ public class Processor extends AbstractServerThread {
             String logFormat = "Handling %s request from %s";
             requestLogger.trace(format(logFormat, requestType, channelFor(key).socket().getRemoteSocketAddress()));
         }
+        // 按请求类型找到指定的RequestHandler
         RequestHandler handlerMapping = requesthandlerFactory.mapping(requestType, request);
         if (handlerMapping == null) {
             throw new InvalidRequestException("No handler found for request");

@@ -18,12 +18,12 @@
 package io.jafka.network;
 
 
+import io.jafka.common.ErrorMapping;
+import io.jafka.message.MessageSet;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.GatheringByteChannel;
-
-import io.jafka.common.ErrorMapping;
-import io.jafka.message.MessageSet;
 
 /**
  * A zero-copy message response that writes the bytes needed directly from
@@ -49,8 +49,13 @@ public class MessageSetSend extends AbstractSend {
         super();
         this.messages = messages;
         this.errorCode = errorCode;
+        // 整个messageSet的大小
+        // 对于ByteBufferMessageSet而言，这里的geSizeInBytes只是byteBuffer的limit
+        // 数据并不能保证完全写满，所以需要sent来记录已写出到buffer中的数目
         this.size = messages.getSizeInBytes();
+        // 整个数据的大小
         header.putInt((int) (size + 2));
+        // 2个字节 保存ErrorMapping
         header.putShort(errorCode.code);
         header.rewind();
     }
@@ -66,10 +71,12 @@ public class MessageSetSend extends AbstractSend {
     public int writeTo(GatheringByteChannel channel) throws IOException {
         expectIncomplete();
         int written = 0;
+        // 先将头部写出到channel
         if (header.hasRemaining()) {
             written += channel.write(header);
         }
         if (!header.hasRemaining()) {
+            // ByteBufferMessageSet中底层是byteBuffer，数据未必能填满，可能需要多次writeTo
             int fileBytesSent = (int) messages.writeTo(channel, sent, size - sent);
             written += fileBytesSent;
             sent += fileBytesSent;

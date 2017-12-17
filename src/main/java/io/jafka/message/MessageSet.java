@@ -107,6 +107,8 @@ public abstract class MessageSet implements Iterable<MessageAndOffset> {
      * @param maxSize size of message
      * @throws IOException any exception
      * @return size of result
+     *
+     * 这个offset是整个message的offset，是绝对的offset
      */
     public abstract long writeTo(GatheringByteChannel channel, long offset, long maxSize) throws IOException;
 }

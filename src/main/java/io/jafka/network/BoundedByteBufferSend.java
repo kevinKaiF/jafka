@@ -33,6 +33,7 @@ public class BoundedByteBufferSend extends AbstractSend {
 
     public BoundedByteBufferSend(ByteBuffer buffer) {
         this.buffer = buffer;
+        // 4字节 保存数据体大小
         sizeBuffer.putInt(buffer.limit());
         sizeBuffer.rewind();
     }
@@ -42,6 +43,7 @@ public class BoundedByteBufferSend extends AbstractSend {
     }
 
     public BoundedByteBufferSend(Request request) {
+        // 2个字节用于保存RequestKeys，即请求类型
         this(request.getSizeInBytes() + 2);
         buffer.putShort((short)request.getRequestKey().value);
         request.writeTo(buffer);
@@ -57,10 +59,14 @@ public class BoundedByteBufferSend extends AbstractSend {
         expectIncomplete();
         int written = 0;
         // try to write the size if we haven't already
+        // sizeBuffer用于存储，buffer中数据的大小
+        // 如果sizeBuffer中的数据还没写出，那么先写出
         if (sizeBuffer.hasRemaining()) written += channel.write(sizeBuffer);
         // try to write the actual buffer itself
+        // 如果sizeBuffer已经写出，buffer中的数据还没有写出，那么先写出
         if (!sizeBuffer.hasRemaining() && buffer.hasRemaining()) written += channel.write(buffer);
         // if we are done, mark it off
+        // 如果buffer中的数据已经写出完毕了，设置标志为已完成
         if (!buffer.hasRemaining()) { setCompleted();}
 
         return written;

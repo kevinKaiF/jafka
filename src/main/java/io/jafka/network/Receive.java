@@ -26,7 +26,6 @@ import java.nio.channels.ReadableByteChannel;
  * @since 1.0
  */
 public interface Receive extends Transmission {
-
     ByteBuffer buffer();
 
     int readFrom(ReadableByteChannel channel) throws IOException;

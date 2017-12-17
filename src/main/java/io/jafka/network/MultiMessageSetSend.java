@@ -18,10 +18,10 @@
 package io.jafka.network;
 
 
+import io.jafka.common.annotations.NotThreadSafe;
+
 import java.util.ArrayList;
 import java.util.List;
-
-import io.jafka.common.annotations.NotThreadSafe;
 
 /**
  * A set of message sets prefixed by size
@@ -34,6 +34,8 @@ public class MultiMessageSetSend extends MultiSend<Send> {
 
     public MultiMessageSetSend(List<MessageSetSend> sets) {
         super();
+        // 4个字节 保存整个数据的大小
+        // 2个字节 保留
         final ByteBufferSend sizeBuffer = new ByteBufferSend(6);
         List<Send> sends = new ArrayList<Send>(sets.size() + 1);
         sends.add(sizeBuffer);
@@ -43,6 +45,7 @@ public class MultiMessageSetSend extends MultiSend<Send> {
             allMessageSetSize += send.getSendSize();
         }
         //write head size
+        // 2个字节，供short占用，allMessageSetSize是整个List<MessageSetSend> sets的大小
         sizeBuffer.getBuffer().putInt(2 + allMessageSetSize);//4
         sizeBuffer.getBuffer().putShort((short) 0);//2
         sizeBuffer.getBuffer().rewind();

@@ -130,6 +130,7 @@ public class Log implements ILog {
         // 如果没有日志文件，说明还没有创建，需要创建新的日志
         if (accum.size() == 0) {
             // no existing segments, create a new mutable segment
+            // 首次创建的文件的文件名是 00000000000000000000.log
             File newFile = new File(dir, Log.nameFromOffset(0));
             FileMessageSet fileMessageSet = new FileMessageSet(newFile, true);
             accum.add(new LogSegment(newFile, fileMessageSet, 0));
@@ -461,28 +462,47 @@ public class Log implements ILog {
         }
     }
 
+    /**
+     * 获取offset
+     *
+     * @param offsetRequest offset request
+     * @return
+     */
     public List<Long> getOffsetsBefore(OffsetRequest offsetRequest) {
+        // 获取当前Log下所有的LogSegment
         List<LogSegment> logSegments = segments.getView();
+        // 获取当前Log下的最后一个LogSegment
         final LogSegment lastLogSegent = segments.getLastView();
         final boolean lastSegmentNotEmpty = lastLogSegent.size() > 0;
         List<KV<Long, Long>> offsetTimes = new ArrayList<KV<Long, Long>>();
+        // 遍历所有LogSegment，将每个LogSegment的起始位置，即相对于整个Log的偏移量，记录下来
         for (LogSegment ls : logSegments) {
             offsetTimes.add(new KV<Long, Long>(//
                     ls.start(), ls.getFile().lastModified()));
         }
+
+        // 对于最后一个LogSegment,偏移量需要特殊处理是，start + highWaterMark，即最新的位置，时间也是当前时间
+        // TODO 为什么这么做?有什么用途
         if (lastSegmentNotEmpty) {
             offsetTimes.add(new KV<Long, Long>(lastLogSegent.start() + lastLogSegent.getMessageSet().highWaterMark(),
                     System.currentTimeMillis()));
         }
         int startIndex = -1;
+        // 客户端的请求时间戳
         final long requestTime = offsetRequest.time;
+        // 最后一个LogSegment
         if (requestTime == OffsetRequest.LATES_TTIME) {
             startIndex = offsetTimes.size() - 1;
+            // 第一个LogSegment
         } else if (requestTime == OffsetRequest.EARLIES_TTIME) {
             startIndex = 0;
         } else {
             boolean isFound = false;
+            // 倒序遍历
             // 从最后一个文件开始遍历，因为文件是有序的，按时间顺序的
+
+            // 如果请求时间戳，小于LogSegments中的最小时间戳，那么startIndex=0，即第一个
+            // 如果请求时间戳，大于LogSegments中的最大时间戳，那么startIndex=size()-1,即最新的一个
             startIndex = offsetTimes.size() - 1;
             for (; !isFound && startIndex >= 0; startIndex--) {
                 if (offsetTimes.get(startIndex).v <= requestTime) {
@@ -490,8 +510,11 @@ public class Log implements ILog {
                 }
             }
         }
+
+        // 对请求LogSegment的index做个限制
         final int retSize = Math.min(offsetRequest.maxNumOffsets, startIndex + 1);
         final List<Long> ret = new ArrayList<Long>(retSize);
+        // 获取所有小于客户端请求时间戳的LogSegment的offset
         for (int j = 0; j < retSize; j++) {
             ret.add(offsetTimes.get(startIndex).k);
             startIndex -= 1;

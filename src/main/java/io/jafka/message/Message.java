@@ -111,6 +111,7 @@ public class Message implements ICalculable {
      */
     public static final int MinHeaderSize = headerSize((byte) 1);
 
+    // 保存message的数据
     final ByteBuffer buffer;
 
     private final int messageSize;

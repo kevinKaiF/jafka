@@ -17,16 +17,6 @@
 
 package io.jafka.producer.async;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-
-
 import io.jafka.api.ProducerRequest;
 import io.jafka.message.ByteBufferMessageSet;
 import io.jafka.message.CompressionCodec;
@@ -36,6 +26,8 @@ import io.jafka.producer.SyncProducer;
 import io.jafka.producer.serializer.Encoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.*;
 
 /**
  * @author adyliu (imxylz@gmail.com)
@@ -93,6 +85,8 @@ public class DefaultEventHandler<T> implements EventHandler<T> {
         if(events == null || events.isEmpty()){
             return Collections.emptyList();
         }
+        // key:topic,value:partition->List<Message>
+        // key:partition,value:List<Message>
         final Map<String, Map<Integer, List<Message>>> topicPartitionData = new HashMap<String, Map<Integer, List<Message>>>();
         for (QueueItem<T> event : events) {
             Map<Integer, List<Message>> partitionData = topicPartitionData.get(event.topic);
@@ -105,6 +99,7 @@ public class DefaultEventHandler<T> implements EventHandler<T> {
                 data = new ArrayList<Message>();
                 partitionData.put(event.partition, data);
             }
+            // 对数据进行加密
             data.add(encoder.toMessage(event.data));
         }
         //
@@ -119,6 +114,14 @@ public class DefaultEventHandler<T> implements EventHandler<T> {
         return requests;
     }
 
+    /**
+     * 将原始的Message数据转为ByteBufferMessageSet
+     * 即转化为可以进行读写的ByteBuffer
+     *
+     * @param topic
+     * @param messages
+     * @return
+     */
     private ByteBufferMessageSet convert(String topic, List<Message> messages) {
         //compress condition:
         if (codec != CompressionCodec.NoCompressionCodec//
