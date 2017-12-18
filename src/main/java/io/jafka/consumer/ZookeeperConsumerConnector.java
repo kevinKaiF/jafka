@@ -524,7 +524,7 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                          * clear the cache */
                         logger.warn("Rebalancing attempt failed. Clearing the cache before the next rebalancing operation is triggered");
                     }
-                    // 否则关闭Fetcher,内存中的数据
+                    // 否则关闭Fetcher, 已经抓取到的数据
                     closeFetchersForQueues( messagesStreams, queues.values());
                     try {
                         // rebalance.backoff.ms rebalance回退时间 默认10000ms
@@ -586,7 +586,29 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                 if (logger.isDebugEnabled()) {
                     StringBuilder buf = new StringBuilder(1024);
                     buf.append("[").append(topic).append("] preassigning details:");
+                    // 剩余的broker数目肯定小于curConsumers.size, 因为curConsumers.size是被除数
                     for (int i = 0; i < curConsumers.size(); i++) {
+                        // 这个地方非常有意思
+                        // 分区分配的算法
+                        /**
+                         * 假如curBrokerPartition = 22; curConsumers = 4,即 4个消费线程去消费22个分区
+                         * 0         4        8        12       16       20   22
+                         * ----------------------------------------------------
+                         * |4        |4       |4       |4       |4       |2   |
+                         * ----------------------------------------------------
+                         * nPartPerConsumer = 22 / 4 = 5
+                         * nConsumerWithExtraPart = 22 % 4 = 2
+                         * for (i : 4)
+                         * i = 0, startPart = 0,  parts = 6
+                         * i = 1, startPart = 6,  parts = 6
+                         * i = 2, startPart = 12, parts = 5
+                         * i = 3, startPart = 17, parts = 5
+                         *
+                         * 刚好22个分区，很好的分配到每个消费线程上，这个关键是
+                         * 如果i < nConsumersWithExtraPart,
+                         * 则分配到的parts = parts + 1，start = start + i
+                         * 否则parts还是平均parts, start = start + nConsumersWithExtraPart
+                         */
                         final int startPart = nPartsPerConsumer * i + Math.min(i, nConsumersWithExtraPart);
                         final int nParts = nPartsPerConsumer + ((i + 1 > nConsumersWithExtraPart) ? 0 : 1);
                         if (nParts > 0) {
@@ -599,14 +621,20 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
                     logger.debug(buf.toString());
                 }
                 //consumerThreadId=> groupid_consumerid-index (index from count)
+                // 当前消费端，消费的topic所对应的消费线程consumerIdString
                 for (String consumerThreadId : e.getValue()) {
-                    // 对当前topic，消费端线程号所在index
+                    // 对当前topic，消费端线程号所在index，维持与原来一致
+                    /////////////////////////// 分配当前消费线程需要消费哪些分区 //////////////////////////////
+                    // 这个操作很关键，需要确定当前消费端的该消费线程在整个集群中同一group下的index
+                    // 因为这个index不同，分配的分区消费数量就不同
+                    // 如果 index < nConsumersWithExtraPart, 那么就会在平均分配分区数目上 + 1
+                    // 否则还是平均分配分区数
                     final int myConsumerPosition = curConsumers.indexOf(consumerThreadId);
                     assert (myConsumerPosition >= 0);
                     final int startPart = nPartsPerConsumer * myConsumerPosition + Math.min(myConsumerPosition,
                             nConsumersWithExtraPart);
                     final int nParts = nPartsPerConsumer + ((myConsumerPosition + 1 > nConsumersWithExtraPart) ? 0 : 1);
-
+                    /////////////////////////// 分配当前消费线程需要消费哪些分区 //////////////////////////////
                     /*
                      * Range-partition the sorted partitions to consumers for better locality.
                      * The first few consumers pick up an extra partition, if any.
