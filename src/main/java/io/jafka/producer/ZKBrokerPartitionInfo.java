@@ -192,7 +192,9 @@ public class ZKBrokerPartitionInfo implements BrokerPartitionInfo {
 
     public void updateInfo() {
         synchronized (this.zkWatcherLock) {
+            // 获取集群的broker信息
             this.allBrokers = getZKBrokerInfo();
+            // 获取集群的topic分区信息
             this.topicBrokerPartitions = getZKTopicPartitionInfo(this.allBrokers);
         }
     }

@@ -99,6 +99,7 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
         if (this.populateProducerPool) {
             for (Map.Entry<Integer, Broker> e : this.brokerPartitionInfo.getAllBrokerInfo().entrySet()) {
                 Broker b = e.getValue();
+                // 为每个broker创建一个producer
                 producerPool.addProducer(new Broker(e.getKey(), b.host, b.host, b.port,b.autocreated));
             }
         }
@@ -110,6 +111,7 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
      *
      * @param config Producer Configuration object
      */
+    // 默认创建的producer, 需要填充producer对象池
     public Producer(ProducerConfig config) {
         this(config, //
                 null,//
@@ -181,14 +183,20 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
         int numRetries = 0;
         Broker brokerInfoOpt = null;
         Partition brokerIdPartition = null;
+        // zk.read.num.retries 尝试次数，默认是3
         while (numRetries <= config.getZkReadRetries() && brokerInfoOpt == null) {
             if (numRetries > 0) {
                 logger.info("Try #" + numRetries + " ZK producer cache is stale. Refreshing it by reading from ZK again");
+                // 更新broker的分区信息
                 brokerPartitionInfo.updateInfo();
             }
+            // 获取该topic对应的所有分区信息
             List<Partition> partitions = new ArrayList<Partition>(getPartitionListForTopic(data));
+            // 分配broker
+            // 这一步非常关键，需要哪个broker的哪个partition上去
             brokerIdPartition = partitions.get(getPartition(data.getKey(), partitions.size()));
             if (brokerIdPartition != null) {
+                // 获取对应broker的信息
                 brokerInfoOpt = brokerPartitionInfo.getBrokerInfo(brokerIdPartition.brokerId);
             }
             numRetries++;
@@ -197,17 +205,26 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
             throw new NoBrokersForPartitionException("Invalid Zookeeper state. Failed to get partition for topic: " + data.getTopic() + " and key: "
                     + data.getKey());
         }
-        //
+        // 组装数据发送
         ProducerPoolData<V> ppd = producerPool.getProducerPoolData(data.getTopic(),//
                 new Partition(brokerIdPartition.brokerId, brokerIdPartition.partId),//
                 data.getData());
         producerPool.send(ppd);
     }
 
+    /**
+     * 分配需要发送到broker的分区
+     *
+     * @param key
+     * @param numPartitions  topic所有分区的数目
+     * @return
+     */
     private int getPartition(K key, int numPartitions) {
         if (numPartitions <= 0) {
             throw new InvalidPartitionException("Invalid number of partitions: " + numPartitions + "\n Valid values are > 0");
         }
+        // 如果key是null,随机分配分区，那么整个kafka的数据就是无序的
+        // 否则按分区器分配分区
         int partition = key == null ? random.nextInt(numPartitions) : getPartitioner().partition(key, numPartitions);
         if (partition < 0 || partition >= numPartitions) {
             throw new InvalidPartitionException("Invalid partition id : " + partition + "\n Valid values are in the range inclusive [0, " + (numPartitions - 1)
@@ -255,6 +272,8 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
     @Override
     public Partitioner<K> getPartitioner() {
         if (partitioner == null) {
+            // partitioner.class 默认DefaultPartitioner key为null，则随机，否则hash
+            // 获取分区规则Partitioner
             partitioner = (Partitioner<K>) Utils.getObject(config.getPartitionerClass());
         }
         return partitioner;

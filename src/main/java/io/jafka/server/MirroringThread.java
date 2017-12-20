@@ -73,6 +73,7 @@ public class MirroringThread extends Thread implements Closeable {
         try {
             for (Message message : stream) {
                 // 封装数据，发送到broker
+                // 此处ProducerData的key是null
                 ProducerData<Void, Message> pd = new ProducerData<Void, Message>(topic, message);
                 producer.send(pd);
             }

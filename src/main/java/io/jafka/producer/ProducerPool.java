@@ -113,8 +113,10 @@ public class ProducerPool<V> implements Closeable {
         if (sync) {
             SyncProducer producer = new SyncProducer(new SyncProducerConfig(props));
             logger.info("Creating sync producer for broker id = " + broker.id + " at " + broker.host + ":" + broker.port);
+            // key:brokerId,value:Producer
             syncProducers.put(broker.id, producer);
         } else {
+            // 如果是异步的，与每个broker需要创建个异步的线程
             AsyncProducer<V> producer = new AsyncProducer<V>(new AsyncProducerConfig(props),//
                     new SyncProducer(new SyncProducerConfig(props)),//
                     serializer,//
@@ -148,6 +150,7 @@ public class ProducerPool<V> implements Closeable {
                 index++;
             }
             ByteBufferMessageSet bbms = new ByteBufferMessageSet(config.getCompressionCodec(), messages);
+            // ProducerPoolData中包含了需要发送到broker的信息
             ProducerRequest request = new ProducerRequest(ppd.topic, ppd.partition.partId, bbms);
             // 找到对应的broker的SyncProducer
             SyncProducer producer = syncProducers.get(ppd.partition.brokerId);

@@ -64,7 +64,7 @@ public class SyncProducer implements Closeable {
         this.config = config;
         this.host = config.getHost();
         this.port = config.getPort();
-        //
+        // 初始化与broker的网络通信channel
         this.blockingChannel = new BlockingChannel(host, port, BlockingChannel.DEFAULT_BUFFER_SIZE, config.bufferSize, config.socketTimeoutMs);
     }
 
