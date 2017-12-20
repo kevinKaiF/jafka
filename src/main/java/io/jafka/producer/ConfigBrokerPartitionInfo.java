@@ -17,14 +17,14 @@
 
 package io.jafka.producer;
 
+import io.jafka.cluster.Broker;
+import io.jafka.cluster.Partition;
+import io.jafka.common.annotations.ClientSide;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
-
-import io.jafka.cluster.Broker;
-import io.jafka.cluster.Partition;
-import io.jafka.common.annotations.ClientSide;
 
 /**
  * send messages with given brokers list
@@ -74,6 +74,7 @@ public class ConfigBrokerPartitionInfo implements BrokerPartitionInfo {
         String[] brokerInfoList = producerConfig.getBrokerList().split(",");
         for (String bInfo : brokerInfoList) {
             final String[] idHostPort = bInfo.split(":");
+            // createId:hostname:port:autocreated
             final int id = Integer.parseInt(idHostPort[0]);
             final String host = idHostPort[1];
             final int port = Integer.parseInt(idHostPort[2]);

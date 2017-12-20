@@ -28,9 +28,6 @@ import io.jafka.utils.Utils;
 
 import java.util.*;
 
-import static io.jafka.utils.Utils.fromBytes;
-import static io.jafka.utils.Utils.getBytes;
-
 /**
  * @author adyliu (imxylz@gmail.com)
  * @since 1.0
@@ -135,6 +132,7 @@ public class ZkUtils {
                     // 获取brokers/topics/topic-name/broker-name的data
                     // parts broker的个数
                     final String parts = readData(zkClient, BrokerTopicsPath + "/" + topic + "/" + broker);
+                    // 获取到分区数目后，就可以知道每个topic，对应的topic分区的文件夹名称了
                     int nParts = Integer.parseInt(parts);
                     for (int i = 0; i < nParts; i++) {
                         partList.add(broker + "-" + i);

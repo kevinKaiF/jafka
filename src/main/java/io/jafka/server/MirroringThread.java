@@ -47,6 +47,14 @@ public class MirroringThread extends Thread implements Closeable {
 
     private final Producer<Void, Message> producer;
 
+    /**
+     * 这里的topic和stream都是对应的，也就是说stream是该topic的stream
+     *
+     * @param stream
+     * @param topic
+     * @param threadId
+     * @param producer
+     */
     public MirroringThread(MessageStream<Message> stream, String topic, int threadId, Producer<Void, Message> producer) {
         super();
         this.stream = stream;
@@ -64,6 +72,7 @@ public class MirroringThread extends Thread implements Closeable {
 
         try {
             for (Message message : stream) {
+                // 封装数据，发送到broker
                 ProducerData<Void, Message> pd = new ProducerData<Void, Message>(topic, message);
                 producer.send(pd);
             }

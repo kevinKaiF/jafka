@@ -27,22 +27,14 @@ import io.jafka.common.annotations.ClientSide;
 import io.jafka.producer.async.CallbackHandler;
 import io.jafka.producer.async.EventHandler;
 import io.jafka.producer.serializer.Encoder;
+import io.jafka.utils.Closer;
 import io.jafka.utils.Utils;
 import io.jafka.utils.ZKConfig;
-import io.jafka.utils.Closer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Random;
-import java.util.SortedSet;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static io.jafka.utils.Closer.closeQuietly;
 
 /**
  * Message producer
@@ -87,6 +79,8 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
         //
         this.zkEnabled = config.getZkConnect() != null;
         if (this.brokerPartitionInfo == null) {
+            // 如果启用zk了，则监听整个集群brokers的变化，
+            // /brokers/topics  /brokers/topics/topic-name  /brokers/ids
             if (this.zkEnabled) {
                 Properties zkProps = new Properties();
                 zkProps.put("zk.connect", config.getZkConnect());
@@ -95,11 +89,13 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
                 zkProps.put("zk.synctime.ms", "" + config.getZkSyncTimeMs());
                 this.brokerPartitionInfo = new ZKBrokerPartitionInfo(new ZKConfig(zkProps), this);
             } else {
+                // 配置监听某些broker
                 this.brokerPartitionInfo = new ConfigBrokerPartitionInfo(config);
             }
         }
         //
         // pool of producers, one per broker
+        // 是否需要填充到producer对象池
         if (this.populateProducerPool) {
             for (Map.Entry<Integer, Broker> e : this.brokerPartitionInfo.getAllBrokerInfo().entrySet()) {
                 Broker b = e.getValue();
@@ -170,6 +166,7 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
         if (zkEnabled) {
             zkSend(data);
         } else {
+            // 如果producer是特定配置的
             configSend(data);
         }
     }
@@ -228,10 +225,13 @@ public class Producer<K, V> implements BrokerPartitionInfo.Callback, IProducer<K
     }
 
     private ProducerPoolData<V> create(ProducerData<K, V> pd) {
+        // 先找ProducerData数据中的topic的分区信息
         Collection<Partition> topicPartitionsList = getPartitionListForTopic(pd);
         //FIXME: random Broker???
+        // 随机找到一个broker
         int randomBrokerId = random.nextInt(topicPartitionsList.size());
         final Partition brokerIdPartition = new ArrayList<Partition>(topicPartitionsList).get(randomBrokerId);
+        // 组装成新的数据，topic,partition,data
         return this.producerPool.getProducerPoolData(pd.getTopic(),//
                 new Partition(brokerIdPartition.brokerId, ProducerRequest.RandomPartition), pd.getData());
     }

@@ -80,7 +80,9 @@ public class ServerRegister implements IZkStateListener, Closeable {
     }
 
     public void processTask(TopicTask task) {
+        // /broker/topics/topic-name
         final String topicPath = ZkUtils.BrokerTopicsPath + "/" + task.topic;
+        // 注册当前brokerId /broker/topics/topic-name/brokerId
         final String brokerTopicPath = ZkUtils.BrokerTopicsPath + "/" + task.topic + "/" + config.getBrokerId();
         synchronized (lock) {
             switch (task.type) {
@@ -93,6 +95,8 @@ public class ServerRegister implements IZkStateListener, Closeable {
                     }
                     break;
                 case CREATE:
+                    // 创建/broker/topics/topic-name/brokerId
+                    // data:topic对应的分区数目
                     topics.add(task.topic);
                     ZkUtils.createEphemeralPathExpectConflict(zkClient, brokerTopicPath, "" + getPartitions(task.topic));
                     break;
@@ -107,6 +111,12 @@ public class ServerRegister implements IZkStateListener, Closeable {
         }
     }
 
+    /**
+     * 获取topic的分区数目
+     *
+     * @param topic
+     * @return
+     */
     private int getPartitions(String topic) {
         Integer numParts = logManager.getTopicPartitionsMap().get(topic);
         return numParts == null ? config.getNumPartitions() : numParts.intValue();
@@ -130,8 +140,11 @@ public class ServerRegister implements IZkStateListener, Closeable {
         }
         //
         final String creatorId = hostname + "-" + System.currentTimeMillis();
+        // topic.autocreated 是否自动创建topic,默认是true
         final Broker broker = new Broker(config.getBrokerId(), creatorId, hostname, config.getPort(),config.isTopicAutoCreated());
         try {
+            // /brokers/ids/brokerId  brokerId是配置在server.properties
+            // data是createId:host:port:autoCreated
             ZkUtils.createEphemeralPathExpectConflict(zkClient, brokerIdPath, broker.getZKString());
         } catch (ZkNodeExistsException e) {
             String oldServerInfo = ZkUtils.readDataMaybeNull(zkClient, brokerIdPath);

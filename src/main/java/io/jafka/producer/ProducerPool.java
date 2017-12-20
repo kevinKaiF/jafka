@@ -17,16 +17,6 @@
 
 package io.jafka.producer;
 
-import java.io.Closeable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-
-
 import io.jafka.api.ProducerRequest;
 import io.jafka.cluster.Broker;
 import io.jafka.cluster.Partition;
@@ -35,15 +25,16 @@ import io.jafka.common.UnavailableProducerException;
 import io.jafka.common.annotations.ClientSide;
 import io.jafka.message.ByteBufferMessageSet;
 import io.jafka.message.Message;
-import io.jafka.producer.async.AsyncProducer;
-import io.jafka.producer.async.AsyncProducerConfig;
-import io.jafka.producer.async.CallbackHandler;
-import io.jafka.producer.async.DefaultEventHandler;
-import io.jafka.producer.async.EventHandler;
+import io.jafka.producer.async.*;
 import io.jafka.producer.serializer.Encoder;
 import io.jafka.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.Closeable;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * @author adyliu (imxylz@gmail.com)
@@ -149,6 +140,7 @@ public class ProducerPool<V> implements Closeable {
             logger.debug("send message: " + ppd);
         }
         if (sync) {
+            // 将data数据序列化到Message
             Message[] messages = new Message[ppd.data.size()];
             int index = 0;
             for (V v : ppd.data) {
@@ -157,6 +149,7 @@ public class ProducerPool<V> implements Closeable {
             }
             ByteBufferMessageSet bbms = new ByteBufferMessageSet(config.getCompressionCodec(), messages);
             ProducerRequest request = new ProducerRequest(ppd.topic, ppd.partition.partId, bbms);
+            // 找到对应的broker的SyncProducer
             SyncProducer producer = syncProducers.get(ppd.partition.brokerId);
             if (producer == null) {
                 throw new UnavailableProducerException("Producer pool has not been initialized correctly. " + "Sync Producer for broker "
@@ -171,6 +164,11 @@ public class ProducerPool<V> implements Closeable {
         }
     }
 
+    /**
+     * 批量发送
+     *
+     * @param poolData
+     */
     public void send(List<ProducerPoolData<V>> poolData) {
         if (sync) {
             syncSend(poolData);

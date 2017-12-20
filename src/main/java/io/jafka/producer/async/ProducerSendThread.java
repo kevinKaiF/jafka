@@ -76,6 +76,7 @@ public class ProducerSendThread<T> extends Thread {
         this.eventHandler = eventHandler;
         this.callbackHandler = callbackHandler;
         this.queueTime = queueTime;
+        // batch.size 默认200
         this.batchSize = batchSize;
     }
 
@@ -111,15 +112,19 @@ public class ProducerSendThread<T> extends Thread {
 
     private List<QueueItem<T>> processEvents() {
         long lastSend = System.currentTimeMillis();
+        // 批量发送
         final List<QueueItem<T>> events = new ArrayList<QueueItem<T>>();
         boolean full = false;
         while (!shutdown) {
             try {
+                // 从queue中poll
                 QueueItem<T> item = queue.poll(Math.max(0, (lastSend + queueTime) - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
                 long elapsed = System.currentTimeMillis() - lastSend;
+                // 在TODO 中添加null，控制
                 boolean expired = item == null;
                 if (item != null) {
                     if (callbackHandler != null) {
+                        // 出队后回调处理
                         List<QueueItem<T>> items = callbackHandler.afterDequeuingExistingData(item);
                         if (items != null) {
                             events.addAll(items);

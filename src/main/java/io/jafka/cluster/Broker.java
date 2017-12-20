@@ -117,6 +117,11 @@ public class Broker {
      * @see #getZKString()
      */
     public static Broker createBroker(int id, String brokerInfoString) {
+        // /broker/ids/brokerId
+        // data:createId:host:port:autocreated
+        // createId由hostname-System.currentTimeMills
+        // hostname可能是ip:port这种格式，所以在创建zk目录的时候，将ip:port转为#，解析的时候需要将#反转为:
+        // autocreated表示是否自动创建topic
         String[] brokerInfo = brokerInfoString.split(":");
         String creator = brokerInfo[0].replace('#', ':');
         String hostname = brokerInfo[1].replace('#', ':');

@@ -67,6 +67,7 @@ public class DefaultEventHandler<T> implements EventHandler<T> {
         if (produces.isEmpty()) {
             return;
         }
+        // 尝试多次发送
         final int maxAttempts = 1 + numRetries;
         for (int i = 0; i < maxAttempts; i++) {
             try {
@@ -81,6 +82,13 @@ public class DefaultEventHandler<T> implements EventHandler<T> {
         }
     }
 
+    /**
+     * 整理组装数据
+     *
+     * @param events
+     * @param encoder
+     * @return
+     */
     private List<ProducerRequest> collate(List<QueueItem<T>> events, Encoder<T> encoder) {
         if(events == null || events.isEmpty()){
             return Collections.emptyList();

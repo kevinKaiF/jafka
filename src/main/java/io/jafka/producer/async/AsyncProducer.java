@@ -70,6 +70,7 @@ public class AsyncProducer<T> implements Closeable {
         super();
         this.producer = producer;
         this.callbackHandler = callbackHandler;
+        // queue.enqueueTimeout.ms 入队等待时间，默认是0ms
         this.enqueueTimeoutMs = config.getEnqueueTimeoutMs();
         //
         this.queue = new LinkedBlockingQueue<QueueItem<T>>(config.getQueueSize());
@@ -80,6 +81,8 @@ public class AsyncProducer<T> implements Closeable {
         if (callbackHandler != null) {
             callbackHandler.init(callbackHandlerProperties);
         }
+
+        // 开启异步发送线程，消费queue中的数据
         this.sendThread = new ProducerSendThread<T>("ProducerSendThread-" + asyncProducerID,
                 queue, //
                 serializer,//
@@ -88,7 +91,7 @@ public class AsyncProducer<T> implements Closeable {
                         : new DefaultEventHandler<T>(new ProducerConfig(config.getProperties()), callbackHandler), //
                 callbackHandler, //
                 config.getQueueTime(), //
-                config.getBatchSize());
+                config.getBatchSize());     // batch.size 批量大小，默认200
         this.sendThread.setDaemon(false);
         AsyncProducerQueueSizeStats<T> stats = new AsyncProducerQueueSizeStats<T>(queue);
         stats.setMbeanName(ProducerQueueSizeMBeanName + "-" + asyncProducerID);
@@ -114,12 +117,20 @@ public class AsyncProducer<T> implements Closeable {
         send(topic, event, ProducerRequest.RandomPartition);
     }
 
+    /**
+     * event实际上是数据，需要发送的数据
+     *
+     * @param topic
+     * @param event
+     * @param partition
+     */
     public void send(String topic, T event, int partition) {
         AsyncProducerStats.recordEvent();
         if (closed.get()) {
             throw new QueueClosedException("Attempt to add event to a closed queue.");
         }
         QueueItem<T> data = new QueueItem<T>(event, partition, topic);
+        // callbackHandler是异步调用的回调方法，这样可以实现一些个性化的需求，比如监控，记录，过滤等等
         if (this.callbackHandler != null) {
             data = this.callbackHandler.beforeEnqueue(data);
         }
@@ -127,13 +138,16 @@ public class AsyncProducer<T> implements Closeable {
         boolean added = false;
         if (data != null) {
             try {
+                // 如果入队不需要等待，则直接添加到队列，但是可能添加会失败
                 if (enqueueTimeoutMs == 0) {
                     // offer 不会阻塞
                     added = queue.offer(data);
+                    // 阻塞等待
                 } else if (enqueueTimeoutMs < 0) {
                     queue.put(data);
                     added = true;
                 } else {
+                    // 阻塞固定时间
                     added = queue.offer(data, enqueueTimeoutMs, TimeUnit.MILLISECONDS);
                 }
             } catch (InterruptedException e) {

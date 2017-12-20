@@ -368,9 +368,11 @@ public class LogManager implements PartitionChooser, Closeable {
      * Register this broker in ZK for the first time.
      */
     public void startup() {
-        // 如果启用zk了，则将当前服务注册到zk
+        // 如果启用zk了，则将注册当前broker到zk
         if (config.getEnableZookeeper()) {
             serverRegister.registerBrokerInZk();
+            // 当前broker上所有的topic注册到 /broker/topics/topic-name/brokerId
+            // data:为分区数目
             for (String topic : getAllTopics()) {
                 serverRegister.processTask(new TopicTask(TopicTask.TaskType.CREATE, topic));
             }
@@ -425,6 +427,11 @@ public class LogManager implements PartitionChooser, Closeable {
         }
     }
 
+    /**
+     * 获取当前broker上所有的日志的topic
+     *
+     * @return
+     */
     private Collection<String> getAllTopics() {
         return logs.keySet();
     }

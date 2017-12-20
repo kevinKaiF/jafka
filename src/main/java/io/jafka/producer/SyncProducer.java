@@ -73,6 +73,7 @@ public class SyncProducer implements Closeable {
     }
 
     public void send(String topic, int partition, ByteBufferMessageSet messages) {
+        // 发送之前校验payload载体的数据大小，不是整个数据体哦
         messages.verifyMessageSize(config.maxMessageSize);
         send(new ProducerRequest(topic, partition, messages));
     }
@@ -82,6 +83,7 @@ public class SyncProducer implements Closeable {
             long startTime = System.nanoTime();
             int written = -1;
             try {
+                // 连接到broker，并发送数据
                 written = connect().send(request);
             } catch (IOException e) {
                 // no way to tell if write succeeded. Disconnect and re-throw exception to let client handle retry

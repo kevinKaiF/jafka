@@ -369,6 +369,9 @@ public class ZookeeperConsumerConnector implements ConsumerConnector {
         }
     }
 
+    /**
+     * 将命令添加到队列的操作方式
+     */
     private void sendShutdownToAllQueues() {
         for (BlockingQueue<FetchedDataChunk> queue : queues.values()) {
             queue.clear();
