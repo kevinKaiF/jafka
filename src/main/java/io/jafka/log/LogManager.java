@@ -473,11 +473,12 @@ public class LogManager implements PartitionChooser, Closeable {
         if (topic.length() <= 0) {
             throw new IllegalArgumentException("topic name can't be empty");
         }
-        //
+        // 获取每个topic的分区数目
         Integer definePartition = this.topicPartitionsMap.get(topic);
         if (definePartition == null) {
             definePartition = numPartitions;
         }
+        // 如果请求的分区数目小于0，或者分区编号大于分区数目，抛出异常
         if (partition < 0 || partition >= definePartition.intValue()) {
             String msg = "Wrong partition [%d] for topic [%s], valid partitions [0,%d)";
             msg = format(msg, partition, topic, definePartition.intValue() - 1);
